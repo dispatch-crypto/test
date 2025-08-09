@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shipment Management - Final Version</title>
+
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Supabase & jsPDF Clients -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://unpkg.com/jspdf-autotable"></script>
+    
+    <!-- Custom Styles -->
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; }
+        .box-item { transition: all 0.2s ease-in-out; border-left-width: 4px; }
+        .box-item:hover { transform: scale(1.03); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .drop-zone { transition: all 0.3s ease; }
+        .drop-zone.drag-over { border-style: dashed; border-color: #4f46e5; background-color: #eef2ff; }
+        .modal { display: none; }
+        .modal.active { display: flex; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinner { animation: spin 1s linear infinite; }
+    </style>
+</head>
+<body class="antialiased text-slate-800">
+
+    <!-- App Container -->
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-screen-2xl">
+
+        <!-- Header -->
+        <header class="flex items-center justify-between mb-6">
+            <div class="flex items-center space-x-4">
+                <div class="bg-indigo-600 p-3 rounded-xl shadow-lg">
+                     <svg class="h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.125-.504 1.125-1.125V14.25m-17.25 4.5v-1.875a3.375 3.375 0 003.375-3.375h1.5a1.125 1.125 0 011.125 1.125v-1.5a3.375 3.375 0 00-3.375-3.375H3.375" /></svg>
+                </div>
+                <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Shipment Management</h1>
+            </div>
+             <div class="flex items-center space-x-4">
+                <div class="text-right">
+                    <p class="text-sm font-semibold text-slate-800">User: <span id="user-display">N/A</span></p>
+                    <button id="change-user-btn" class="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Change User</button>
+                </div>
+                <a href="./daily_dispatch.html" class="text-sm font-semibold text-slate-600 hover:text-indigo-700">&#8592; Back</a>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <!-- Left Column: Unshipped Boxes -->
+            <div class="lg:col-span-3">
+                <h2 class="text-2xl font-bold text-slate-800 mb-4">Unshipped Boxes (<span id="unshipped-count">0</span>)</h2>
+                <div class="space-y-4">
+                    <input type="text" id="search-input" placeholder="Scan or Search by Box ID..." class="w-full p-2 border rounded-md">
+                    <select id="courier-filter" class="w-full p-2 border rounded-md"></select>
+                    <div id="unshipped-boxes-list" class="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
+                        <div id="unshipped-placeholder" class="text-center py-16 bg-white rounded-2xl shadow-md border border-slate-200"><div class="h-12 w-12 border-4 border-indigo-500 border-t-transparent rounded-full spinner mx-auto"></div><p class="mt-4 font-semibold text-slate-600">Loading packed boxes...</p></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Middle Column: Shipments -->
+            <div class="lg:col-span-6">
+                <h2 class="text-2xl font-bold text-slate-800 mb-4">Today's Shipments</h2>
+                <!-- New Shipment Staging Area -->
+                <div id="new-shipment-zone" class="drop-zone bg-white p-6 rounded-2xl shadow-lg border border-slate-200 mb-6">
+                    <div class="flex justify-between items-center">
+                        <h3 class="font-bold text-slate-800">Create New Shipment</h3>
+                        <span id="new-shipment-courier" class="text-sm font-bold text-indigo-700 bg-indigo-100 px-3 py-1 rounded-full hidden"></span>
+                    </div>
+                    <div id="new-shipment-boxes" class="mt-2 min-h-[60px] bg-slate-50 rounded-lg p-2 grid grid-cols-2 md:grid-cols-3 gap-2">
+                        <p id="new-shipment-placeholder" class="col-span-full text-center text-sm text-slate-400 py-4">Scan, click, or drag boxes here</p>
+                    </div>
+                    <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                        <input type="text" id="docket-number-input" placeholder="Enter Docket/AWB Number" class="w-full p-2 border rounded-md">
+                        <button id="create-shipment-btn" class="w-full bg-emerald-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-emerald-700 disabled:bg-slate-400 transition-colors">Create Shipment</button>
+                    </div>
+                </div>
+                <!-- Existing Shipments -->
+                <div id="shipments-list" class="space-y-4 max-h-[50vh] overflow-y-auto pr-2">
+                    <p id="shipments-placeholder" class="text-center text-slate-500 py-16">No shipments created today.</p>
+                </div>
+            </div>
+
+            <!-- Right Column: Details & Log -->
+            <div class="lg:col-span-3">
+                 <h2 class="text-2xl font-bold text-slate-800 mb-4">Details & Log</h2>
+                 <div id="details-panel" class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 mb-6 hidden"></div>
+                 <div id="details-placeholder" class="text-center py-12 bg-white rounded-2xl shadow-lg border border-slate-200 mb-6"><p class="text-slate-500">Select a shipment to see details</p></div>
+                 <div id="activity-log" class="bg-white p-4 rounded-2xl shadow-lg border border-slate-200 space-y-3 h-[40vh] overflow-y-auto flex flex-col-reverse">
+                    <p id="activity-placeholder" class="text-sm text-slate-400 text-center pt-12">No activity yet.</p>
+                 </div>
+            </div>
+        </main>
+    </div>
+    
+    <!-- Toast Notification -->
+    <div id="toast-notification" class="fixed bottom-5 right-5 bg-slate-900 text-white text-sm font-semibold py-3 px-5 rounded-lg shadow-2xl transform translate-y-20 opacity-0 transition-all duration-500 ease-in-out"><span id="toast-message"></span></div>
+
+    <script type="module">
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- CONFIGURATION ---
+            const SUPABASE_URL = 'https://jyzbdkuizwvqamsxqdfg.supabase.co';
+            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp5emJka3Vpend2cWFtc3hxZGZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ0MTE2MzUsImV4cCI6MjA2OTk4NzYzNX0.AqcKHtGPjm5fSijgjh8CMzrqRuheDRAefyU0prPwY2I';
+            const { createClient } = supabase;
+            const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            const { jsPDF } = window.jspdf;
+
+            // --- STATE MANAGEMENT ---
+            let unshippedBoxes = [];
+            let shipments = [];
+            let couriers = [];
+            let newShipmentBoxIds = new Set();
+            let selectedShipmentId = null;
+            let currentUser = localStorage.getItem('packingUser') || 'Default';
+            let toastTimeout;
+
+            // --- UI ELEMENTS ---
+            const UI = {
+                unshippedCount: document.getElementById('unshipped-count'),
+                unshippedList: document.getElementById('unshipped-boxes-list'),
+                unshippedPlaceholder: document.getElementById('unshipped-placeholder'),
+                searchInput: document.getElementById('search-input'),
+                courierFilter: document.getElementById('courier-filter'),
+                shipmentsList: document.getElementById('shipments-list'),
+                shipmentsPlaceholder: document.getElementById('shipments-placeholder'),
+                newShipmentZone: document.getElementById('new-shipment-zone'),
+                newShipmentBoxes: document.getElementById('new-shipment-boxes'),
+                newShipmentPlaceholder: document.getElementById('new-shipment-placeholder'),
+                newShipmentCourier: document.getElementById('new-shipment-courier'),
+                docketInput: document.getElementById('docket-number-input'),
+                createShipmentBtn: document.getElementById('create-shipment-btn'),
+                detailsPanel: document.getElementById('details-panel'),
+                detailsPlaceholder: document.getElementById('details-placeholder'),
+                activityLog: document.getElementById('activity-log'),
+                activityPlaceholder: document.getElementById('activity-placeholder'),
+                userDisplay: document.getElementById('user-display'),
+                changeUserBtn: document.getElementById('change-user-btn'),
+                toast: document.getElementById('toast-notification'),
+                toastMessage: document.getElementById('toast-message'),
+            };
+
+            // --- UI & NOTIFICATION LOGIC ---
+            const showToast = (message, isError = false, duration = 3000) => {
+                clearTimeout(toastTimeout);
+                UI.toastMessage.textContent = message;
+                UI.toast.classList.toggle('bg-rose-600', isError);
+                UI.toast.classList.toggle('bg-slate-900', !isError);
+                UI.toast.classList.remove('opacity-0', 'translate-y-20');
+                
+                toastTimeout = setTimeout(() => {
+                    UI.toast.classList.add('opacity-0', 'translate-y-20');
+                }, duration);
+            };
+
+            const addLogEntry = (message, type = 'info') => {
+                UI.activityPlaceholder.classList.add('hidden');
+                const div = document.createElement('div');
+                const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                let icon;
+                switch(type) {
+                    case 'success': icon = `<svg class="h-5 w-5 text-emerald-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>`; break;
+                    case 'error': icon = `<svg class="h-5 w-5 text-rose-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg>`; break;
+                    default: icon = `<svg class="h-5 w-5 text-slate-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" /></svg>`;
+                }
+                div.className = 'flex items-start space-x-3 text-sm';
+                div.innerHTML = `<div class="flex-shrink-0">${icon}</div><div class="flex-grow"><p class="text-slate-700">${message}</p><p class="text-xs text-slate-400">${time}</p></div>`;
+                UI.activityLog.prepend(div);
+            };
+
+            // --- RENDER FUNCTIONS ---
+            const renderUnshippedBoxes = () => {
+                const searchTerm = UI.searchInput.value.toLowerCase();
+                const courierFilter = UI.courierFilter.value;
+
+                const filteredBoxes = unshippedBoxes.filter(box => {
+                    const searchMatch = box.box_id.toLowerCase().includes(searchTerm);
+                    const courierMatch = courierFilter === 'all' || box.courier_id == courierFilter;
+                    return searchMatch && courierMatch;
+                });
+                
+                UI.unshippedCount.textContent = filteredBoxes.length;
+                UI.unshippedList.innerHTML = '';
+
+                if (filteredBoxes.length === 0) {
+                    UI.unshippedPlaceholder.innerHTML = `<p class="text-center text-slate-500 py-16">No packed boxes match filters.</p>`;
+                    UI.unshippedList.appendChild(UI.unshippedPlaceholder);
+                } else {
+                    filteredBoxes.forEach(box => {
+                        const div = document.createElement('div');
+                        div.className = 'box-item bg-white p-3 rounded-lg shadow-sm cursor-pointer border-l-slate-300';
+                        div.draggable = true;
+                        div.dataset.boxId = box.box_id;
+                        div.innerHTML = `<p class="font-bold text-sm font-mono">${box.box_id}</p><p class="text-xs text-slate-600">${box.courier_name}</p>`;
+                        div.addEventListener('dragstart', e => e.dataTransfer.setData('text/plain', box.box_id));
+                        div.addEventListener('click', () => handleSelectBox(box.box_id));
+                        UI.unshippedList.appendChild(div);
+                    });
+                }
+            };
+
+            const renderNewShipmentZone = () => {
+                UI.newShipmentBoxes.innerHTML = '';
+                if (newShipmentBoxIds.size === 0) {
+                    UI.newShipmentBoxes.appendChild(UI.newShipmentPlaceholder);
+                    UI.newShipmentCourier.classList.add('hidden');
+                } else {
+                    const firstBox = unshippedBoxes.find(b => b.box_id === [...newShipmentBoxIds][0]);
+                    UI.newShipmentCourier.textContent = firstBox.courier_name;
+                    UI.newShipmentCourier.classList.remove('hidden');
+
+                    newShipmentBoxIds.forEach(boxId => {
+                        const div = document.createElement('div');
+                        div.className = 'bg-indigo-100 text-indigo-800 text-xs font-semibold p-2 rounded-md text-center';
+                        div.textContent = boxId;
+                        UI.newShipmentBoxes.appendChild(div);
+                    });
+                }
+                UI.createShipmentBtn.disabled = newShipmentBoxIds.size === 0 || UI.docketInput.value.trim() === '';
+            };
+
+            const renderShipments = () => {
+                UI.shipmentsList.innerHTML = '';
+                if (shipments.length === 0) {
+                    UI.shipmentsList.appendChild(UI.shipmentsPlaceholder);
+                } else {
+                    shipments.forEach(shipment => {
+                        const div = document.createElement('div');
+                        div.className = 'drop-zone bg-white border rounded-lg p-4 cursor-pointer hover:bg-slate-50';
+                        div.dataset.shipmentId = shipment.id;
+                        div.innerHTML = `
+                            <div class="flex justify-between items-center">
+                                <div>
+                                    <p class="font-bold text-indigo-700">${shipment.docket_number}</p>
+                                    <p class="text-sm font-medium text-slate-600">${shipment.courier_name}</p>
+                                </div>
+                                <span class="text-sm bg-slate-100 px-2 py-1 rounded-full">${shipment.shipment_items.length} boxes</span>
+                            </div>
+                        `;
+                        div.addEventListener('click', () => { selectedShipmentId = shipment.id; renderDetailsPanel(); });
+                        UI.shipmentsList.appendChild(div);
+                    });
+                }
+            };
+
+            const renderDetailsPanel = () => {
+                if (!selectedShipmentId) {
+                    UI.detailsPanel.classList.add('hidden');
+                    UI.detailsPlaceholder.classList.remove('hidden');
+                    return;
+                }
+                
+                const shipment = shipments.find(s => s.id === selectedShipmentId);
+                if (!shipment) return;
+
+                UI.detailsPlaceholder.classList.add('hidden');
+                UI.detailsPanel.classList.remove('hidden');
+                UI.detailsPanel.innerHTML = `
+                    <h3 class="text-xl font-bold text-slate-800">${shipment.docket_number}</h3>
+                    <p class="text-sm text-slate-500 mb-4">${shipment.courier_name}</p>
+                    <p class="font-semibold mb-2">Boxes (${shipment.shipment_items.length})</p>
+                    <ul class="max-h-40 overflow-y-auto space-y-1 pr-2 mb-4">
+                        ${shipment.shipment_items.map(item => `<li class="bg-slate-100 p-1 rounded text-xs font-mono">${item.box_id}</li>`).join('')}
+                    </ul>
+                    <button id="print-manifest-btn" class="w-full bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700">Print Manifest</button>
+                `;
+                document.getElementById('print-manifest-btn').addEventListener('click', () => handlePrintManifest(shipment.id));
+            };
+            
+            const renderFilters = () => {
+                UI.courierFilter.innerHTML = '<option value="all">All Couriers</option>' + couriers.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+            };
+
+            // --- CORE LOGIC ---
+            const fetchInitialData = async () => {
+                const { data: boxesData, error: boxesError } = await db.from('boxes')
+                    .select(`box_id, delivery_groups(stores!inner(courier_id, couriers(name)))`)
+                    .eq('status', 'Packed');
+
+                const { data: shipmentsData, error: shipmentsError } = await db.from('shipments')
+                    .select(`*, shipment_items(box_id), couriers(name)`)
+                    .eq('shipment_date', new Date().toISOString().split('T')[0]);
+                
+                const { data: couriersData, error: couriersError } = await db.from('couriers').select('*');
+
+                if (boxesError || shipmentsError || couriersError) {
+                    showToast('Error fetching initial data.', true);
+                    return;
+                }
+                
+                couriers = couriersData;
+                shipments = shipmentsData.sort((a, b) => a.docket_number.localeCompare(b.docket_number));
+                const shippedBoxIds = shipments.flatMap(s => s.shipment_items.map(item => item.box_id));
+                
+                unshippedBoxes = boxesData
+                    .filter(box => !shippedBoxIds.includes(box.box_id))
+                    .map(box => ({
+                        box_id: box.box_id,
+                        courier_id: box.delivery_groups.stores[0].courier_id,
+                        courier_name: box.delivery_groups.stores[0].couriers.name,
+                    }));
+
+                renderAll();
+            };
+
+            const handleSelectBox = (boxId) => {
+                const box = unshippedBoxes.find(b => b.box_id === boxId);
+                if (!box) return;
+
+                if (newShipmentBoxIds.size > 0) {
+                    const firstBox = unshippedBoxes.find(b => b.box_id === [...newShipmentBoxIds][0]);
+                    if (box.courier_id !== firstBox.courier_id) {
+                        showToast(`Error: Cannot mix couriers. This shipment is for ${firstBox.courier_name}.`, true);
+                        return;
+                    }
+                }
+                
+                newShipmentBoxIds.add(boxId);
+                renderNewShipmentZone();
+            };
+
+            const handleCreateShipment = async () => {
+                const docketNumber = UI.docketInput.value.trim();
+                if (newShipmentBoxIds.size === 0 || !docketNumber) {
+                    showToast('Add boxes and a docket number first.', true); return;
+                }
+
+                const boxes = [...newShipmentBoxIds].map(id => unshippedBoxes.find(b => b.box_id === id));
+                const firstCourierId = boxes[0].courier_id;
+                
+                const { data: shipment, error: shipmentError } = await db.from('shipments').insert({ docket_number: docketNumber, courier_id: firstCourierId, status: 'Dispatched' }).select().single();
+                if (shipmentError) { showToast(`Error: ${shipmentError.message}`, true); return; }
+
+                const items = [...newShipmentBoxIds].map(box_id => ({ shipment_id: shipment.id, box_id }));
+                const { error: itemsError } = await db.from('shipment_items').insert(items);
+                if (itemsError) { showToast(`Error linking boxes: ${itemsError.message}`, true); return; }
+
+                addLogEntry(`Shipment <strong class="font-mono">${docketNumber}</strong> created with ${items.length} boxes by ${currentUser}.`, 'success');
+                showToast(`Shipment ${docketNumber} created!`);
+                
+                newShipmentBoxIds.clear();
+                UI.docketInput.value = '';
+                fetchInitialData();
+            };
+            
+            const handleAddToShipment = async (shipmentId, boxId) => {
+                const shipment = shipments.find(s => s.id == shipmentId);
+                const box = unshippedBoxes.find(b => b.box_id === boxId);
+                if (shipment.courier_id !== box.courier_id) {
+                    showToast(`Error: Box courier (${box.courier_name}) does not match shipment courier (${shipment.courier_name}).`, true);
+                    return;
+                }
+
+                const { error } = await db.from('shipment_items').insert({ shipment_id: shipmentId, box_id: boxId });
+                if (error) { showToast(`Error adding box: ${error.message}`, true); } 
+                else {
+                    addLogEntry(`Box <strong class="font-mono">${boxId}</strong> added to <strong class="font-mono">${shipment.docket_number}</strong>.`, 'info');
+                    showToast(`Added ${boxId} to shipment.`);
+                    fetchInitialData();
+                }
+            };
+            
+            const handlePrintManifest = (shipmentId) => {
+                const shipment = shipments.find(s => s.id == shipmentId);
+                if (!shipment) return;
+
+                const doc = new jsPDF();
+                doc.setFontSize(22);
+                doc.text('Shipment Manifest', 105, 20, { align: 'center' });
+                doc.setFontSize(12);
+                doc.text(`Date: ${new Date(shipment.shipment_date).toLocaleDateString()}`, 20, 40);
+                doc.text(`Courier: ${shipment.courier_name}`, 20, 50);
+                doc.text(`Docket / AWB: ${shipment.docket_number}`, 20, 60);
+
+                doc.autoTable({
+                    startY: 70,
+                    head: [['#', 'Box ID']],
+                    body: shipment.shipment_items.map((item, index) => [index + 1, item.box_id]),
+                });
+
+                const finalY = doc.lastAutoTable.finalY || 100;
+                doc.text(`Total Boxes: ${shipment.shipment_items.length}`, 20, finalY + 10);
+                doc.text('Received By: ___________________', 20, finalY + 30);
+                doc.text('Signature: ___________________', 120, finalY + 30);
+
+                doc.save(`Manifest-${shipment.docket_number}.pdf`);
+                addLogEntry(`Manifest printed for <strong class="font-mono">${shipment.docket_number}</strong>.`);
+            };
+
+            const renderAll = () => {
+                // **FIX**: Reordered function calls to prevent race condition.
+                renderFilters();
+                renderUnshippedBoxes();
+                renderNewShipmentZone();
+                renderShipments();
+                renderDetailsPanel();
+            };
+
+            // --- EVENT LISTENERS ---
+            UI.searchInput.addEventListener('input', renderUnshippedBoxes);
+            UI.searchInput.addEventListener('change', (e) => { // For scanner input
+                const boxId = e.target.value.trim();
+                const boxExists = unshippedBoxes.some(b => b.box_id === boxId);
+                if (boxExists) {
+                    handleSelectBox(boxId);
+                    e.target.value = '';
+                    renderUnshippedBoxes();
+                } else if (boxId) {
+                    showToast(`Box ${boxId} not found or already shipped.`, true);
+                }
+            });
+            UI.courierFilter.addEventListener('change', renderUnshippedBoxes);
+            UI.docketInput.addEventListener('input', renderNewShipmentZone);
+            UI.createShipmentBtn.addEventListener('click', handleCreateShipment);
+            
+            // Drag and Drop for New Shipment Zone
+            ['dragover', 'dragenter'].forEach(event => UI.newShipmentZone.addEventListener(event, e => { e.preventDefault(); UI.newShipmentZone.classList.add('drag-over'); }));
+            UI.newShipmentZone.addEventListener('dragleave', () => UI.newShipmentZone.classList.remove('drag-over'));
+            UI.newShipmentZone.addEventListener('drop', e => {
+                e.preventDefault();
+                UI.newShipmentZone.classList.remove('drag-over');
+                const boxId = e.dataTransfer.getData('text/plain');
+                handleSelectBox(boxId);
+            });
+
+            // Drag and Drop for Existing Shipments
+            UI.shipmentsList.addEventListener('dragover', e => {
+                e.preventDefault();
+                const target = e.target.closest('.drop-zone');
+                if (target) target.classList.add('drag-over');
+            });
+             UI.shipmentsList.addEventListener('dragleave', e => {
+                const target = e.target.closest('.drop-zone');
+                if (target) target.classList.remove('drag-over');
+            });
+            UI.shipmentsList.addEventListener('drop', e => {
+                e.preventDefault();
+                const target = e.target.closest('.drop-zone');
+                if (target) {
+                    target.classList.remove('drag-over');
+                    const boxId = e.dataTransfer.getData('text/plain');
+                    const shipmentId = target.dataset.shipmentId;
+                    handleAddToShipment(shipmentId, boxId);
+                }
+            });
+            
+            // User Setup
+            UI.userDisplay.textContent = currentUser;
+            UI.changeUserBtn.addEventListener('click', () => {
+                const newUser = prompt('Enter your name:', currentUser);
+                if (newUser && newUser.trim()) {
+                    currentUser = newUser.trim();
+                    localStorage.setItem('packingUser', currentUser);
+                    UI.userDisplay.textContent = currentUser;
+                    addLogEntry(`User changed to <strong class="font-semibold">${currentUser}</strong>.`);
+                }
+            });
+
+            // --- INITIALIZATION ---
+            fetchInitialData();
+            addLogEntry('Shipment Management page loaded.');
+        });
+    </script>
+</body>
+</html>

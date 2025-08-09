@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Packing Station - Final Working Version</title>
+
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Supabase Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <!-- Custom Styles -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f1f5f9; /* slate-100 */
+        }
+        .scanner-input:focus {
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.4); /* focus:ring-indigo-300 */
+            border-color: #6366f1; /* focus:border-indigo-500 */
+        }
+        .queue-item.active {
+            background-color: #e0e7ff; /* indigo-200 */
+            border-left-color: #4f46e5; /* indigo-600 */
+        }
+        .priority-delivery-boy {
+            border-left: 4px solid #facc15; /* yellow-400 */
+            background-color: #fefce8; /* yellow-50 */
+        }
+        .priority-urgent {
+             border-left: 4px solid #fb923c; /* orange-400 */
+             background-color: #fff7ed; /* orange-50 */
+        }
+        .priority-normal {
+            border-left: 4px solid #e2e8f0; /* slate-200 */
+        }
+        .packed-item {
+            background-color: #f0fdf4; /* green-50 */
+            color: #6b7280; /* slate-500 */
+            text-decoration: line-through;
+        }
+        .modal { display: none; }
+        .modal.active { display: flex; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinner { animation: spin 1s linear infinite; }
+    </style>
+</head>
+<body class="antialiased text-slate-800">
+
+    <!-- App Container -->
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-screen-2xl">
+
+        <!-- Header -->
+        <header class="flex items-center justify-between mb-6">
+            <div class="flex items-center space-x-4">
+                <div class="bg-indigo-600 p-3 rounded-xl shadow-lg">
+                    <svg class="h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" /></svg>
+                </div>
+                <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Packing Station</h1>
+            </div>
+            <div class="flex items-center space-x-4">
+                <div class="text-right">
+                    <p class="text-sm font-semibold text-slate-800">User: <span id="user-display">N/A</span></p>
+                    <button id="change-user-btn" class="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Change User</button>
+                </div>
+                <a href="./daily_dispatch.html" class="text-sm font-semibold text-slate-600 hover:text-indigo-700">&#8592; Back</a>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main>
+            <!-- Scanner Input -->
+            <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 mb-8 sticky top-4 z-10">
+                <label for="scanner-input" class="block text-sm font-bold text-slate-700 mb-2">Scan Box ID to Activate</label>
+                <div class="relative"><svg class="absolute left-4 top-1/2 -translate-y-1/2 h-6 w-6 text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.5h16.5v15H3.75v-15zm12.75 3.75h-9v1.5h9v-1.5zm-9 3.75h9v1.5h-9v-1.5zm9 3.75h-9v1.5h9v-1.5z" /></svg>
+                    <input type="text" id="scanner-input" placeholder="Waiting for scan..." class="scanner-input w-full pl-12 pr-4 py-3 text-lg font-semibold text-slate-800 bg-slate-50 rounded-lg border-2 border-slate-300 transition-all">
+                </div>
+            </div>
+
+            <!-- Packing Area -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                <!-- Left: Packing Queue -->
+                <div class="lg:col-span-3">
+                    <h2 class="text-2xl font-bold text-slate-800 mb-4">Packing Queue</h2>
+                    <div id="packing-queue" class="space-y-3 max-h-[65vh] overflow-y-auto pr-2">
+                        <div id="queue-placeholder" class="text-center py-16 bg-white rounded-2xl shadow-md border border-slate-200"><div class="h-12 w-12 border-4 border-indigo-500 border-t-transparent rounded-full spinner mx-auto"></div><p class="mt-4 font-semibold text-slate-600">Loading today's dispatch...</p></div>
+                    </div>
+                </div>
+
+                <!-- Middle: Active Box Area -->
+                <div class="lg:col-span-6">
+                    <div id="active-box-placeholder" class="flex flex-col items-center justify-center h-full bg-white rounded-2xl shadow-lg border border-slate-200 text-center p-8"><svg class="h-16 w-16 text-indigo-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg><h3 class="mt-4 text-xl font-bold text-slate-700">No Active Box</h3><p class="text-slate-500 mt-1">Scan a Box ID from the queue to begin packing.</p></div>
+                    <div id="active-box-details" class="hidden">
+                        <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 mb-6"><h2 class="text-2xl font-bold text-indigo-700 font-mono" id="box-id-display"></h2><p class="text-slate-600 mt-1" id="store-info-display"></p><div class="mt-4"><div class="flex justify-between items-center mb-1"><span class="text-sm font-medium text-slate-700">Packing Progress</span><span class="text-sm font-bold text-slate-800" id="progress-text">0 / 0</span></div><div class="w-full bg-slate-200 rounded-full h-4"><div id="progress-bar" class="bg-indigo-600 h-4 rounded-full transition-all duration-300" style="width: 0%"></div></div></div></div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6"><div class="bg-white rounded-2xl shadow-lg border border-slate-200 p-4 flex flex-col"><h3 class="text-lg font-semibold mb-4 text-center text-slate-800">Pending Items</h3><ul id="pending-items" class="space-y-2 overflow-y-auto flex-grow min-h-[200px]"></ul></div><div class="bg-white rounded-2xl shadow-lg border border-slate-200 p-4 flex flex-col"><h3 class="text-lg font-semibold mb-4 text-center text-slate-800">Packed Items</h3><ul id="packed-items" class="space-y-2 overflow-y-auto flex-grow min-h-[200px]"></ul></div></div>
+                    </div>
+                </div>
+
+                <!-- Right: Activity Log -->
+                <div class="lg:col-span-3">
+                    <h2 class="text-2xl font-bold text-slate-800 mb-4">Activity Log</h2>
+                    <div id="activity-log" class="bg-white p-4 rounded-2xl shadow-lg border border-slate-200 space-y-3 min-h-[65vh] max-h-[65vh] overflow-y-auto flex flex-col-reverse">
+                        <p id="activity-placeholder" class="text-sm text-slate-400 text-center pt-12">No activity yet.</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <!-- Modals & Toasts -->
+    <div id="toast-notification" class="fixed bottom-5 right-5 bg-slate-900 text-white text-sm font-semibold py-3 px-5 rounded-lg shadow-2xl transform translate-y-20 opacity-0 transition-all duration-500 ease-in-out"><span id="toast-message"></span></div>
+    <div id="exception-modal" class="modal fixed inset-0 bg-black/60 z-20 items-center justify-center p-4"><div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md"><h3 class="text-xl leading-6 font-bold text-slate-900">Packing Exception</h3><p class="mt-2 text-slate-500" id="exception-message"></p><div class="mt-6 grid grid-cols-2 gap-4"><button id="exception-cancel-btn" class="rounded-lg px-4 py-2.5 bg-slate-200 text-base font-semibold text-slate-800 hover:bg-slate-300">Cancel</button><button id="exception-confirm-btn" class="rounded-lg px-4 py-2.5 bg-rose-600 text-base font-semibold text-white hover:bg-rose-700">Confirm & Move</button></div></div></div>
+
+    <script type="module">
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- CONFIGURATION ---
+            const SUPABASE_URL = 'https://jyzbdkuizwvqamsxqdfg.supabase.co';
+            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp5emJka3Vpend2cWFtc3hxZGZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ0MTE2MzUsImV4cCI6MjA2OTk4NzYzNX0.AqcKHtGPjm5fSijgjh8CMzrqRuheDRAefyU0prPwY2I';
+            const { createClient } = supabase;
+            const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+            // --- STATE MANAGEMENT ---
+            let dispatchQueue = [];
+            let activeBox = null;
+            let currentUser = localStorage.getItem('packingUser') || 'Default';
+            let toastTimeout;
+            let exceptionContext = null;
+
+            // --- UI ELEMENTS ---
+            const UI = {
+                scannerInput: document.getElementById('scanner-input'),
+                scannerLabel: document.querySelector('label[for="scanner-input"]'),
+                packingQueue: document.getElementById('packing-queue'),
+                queuePlaceholder: document.getElementById('queue-placeholder'),
+                activeBoxPlaceholder: document.getElementById('active-box-placeholder'),
+                activeBoxDetails: document.getElementById('active-box-details'),
+                boxIdDisplay: document.getElementById('box-id-display'),
+                storeInfoDisplay: document.getElementById('store-info-display'),
+                progressText: document.getElementById('progress-text'),
+                progressBar: document.getElementById('progress-bar'),
+                pendingItems: document.getElementById('pending-items'),
+                packedItems: document.getElementById('packed-items'),
+                activityLog: document.getElementById('activity-log'),
+                activityPlaceholder: document.getElementById('activity-placeholder'),
+                userDisplay: document.getElementById('user-display'),
+                changeUserBtn: document.getElementById('change-user-btn'),
+                toast: document.getElementById('toast-notification'),
+                toastMessage: document.getElementById('toast-message'),
+                exceptionModal: document.getElementById('exception-modal'),
+                exceptionMessage: document.getElementById('exception-message'),
+                exceptionCancelBtn: document.getElementById('exception-cancel-btn'),
+                exceptionConfirmBtn: document.getElementById('exception-confirm-btn'),
+            };
+
+            // --- UI & NOTIFICATION LOGIC ---
+            const showToast = (message, isError = false, duration = 3000) => {
+                clearTimeout(toastTimeout);
+                UI.toastMessage.textContent = message;
+                UI.toast.classList.toggle('bg-rose-600', isError);
+                UI.toast.classList.toggle('bg-slate-900', !isError);
+                UI.toast.classList.remove('opacity-0', 'translate-y-20');
+                
+                toastTimeout = setTimeout(() => {
+                    UI.toast.classList.add('opacity-0', 'translate-y-20');
+                }, duration);
+            };
+
+            const renderQueue = () => {
+                UI.packingQueue.innerHTML = '';
+                if (dispatchQueue.length === 0) {
+                    UI.queuePlaceholder.innerHTML = `<svg class="mx-auto h-12 w-12 text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h7.5M8.25 12h7.5m-7.5 5.25h7.5M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg><p class="mt-4 font-semibold text-slate-600">No boxes are pending for today.</p><p class="text-sm text-slate-400 mt-1">Create a dispatch plan to begin.</p>`;
+                    UI.packingQueue.appendChild(UI.queuePlaceholder);
+                    return;
+                }
+                
+                dispatchQueue.forEach(box => {
+                    const div = document.createElement('div');
+                    const priorityClass = getPriorityClass(box.courier_name);
+                    const isActive = activeBox && box.box_id === activeBox.box_id;
+                    div.className = `queue-item p-4 rounded-lg shadow-sm transition-all cursor-pointer ${priorityClass} ${isActive ? 'active' : ''}`;
+                    div.dataset.boxId = box.box_id;
+                    div.innerHTML = `
+                        <div class="flex justify-between items-center">
+                            <p class="font-bold text-sm font-mono">${box.box_id}</p>
+                            <span class="text-xs font-bold px-2 py-1 rounded-full ${getPriorityClass(box.courier_name, true)}">${box.courier_name || 'N/A'}</span>
+                        </div>
+                        <p class="text-xs text-slate-600 mt-1">${box.store_name}</p>
+                    `;
+                    div.addEventListener('click', () => handleScan(box.box_id));
+                    UI.packingQueue.appendChild(div);
+                });
+            };
+            
+            const renderActiveBox = () => {
+                if (!activeBox) {
+                    UI.activeBoxPlaceholder.classList.remove('hidden');
+                    UI.activeBoxDetails.classList.add('hidden');
+                    UI.scannerLabel.textContent = 'Scan Box ID to Activate';
+                    return;
+                }
+
+                UI.activeBoxPlaceholder.classList.add('hidden');
+                UI.activeBoxDetails.classList.remove('hidden');
+                UI.scannerLabel.textContent = 'Scan GKB Order # to Pack';
+
+                UI.boxIdDisplay.textContent = activeBox.box_id;
+                UI.storeInfoDisplay.textContent = `${activeBox.store_name} - ${activeBox.city}`;
+
+                UI.pendingItems.innerHTML = '';
+                UI.packedItems.innerHTML = '';
+                const packedCount = activeBox.orders.filter(o => o.status === 'Packed').length;
+                
+                activeBox.orders.sort((a,b) => a.gkb_order_no.localeCompare(b.gkb_order_no)).forEach(order => {
+                    const li = document.createElement('li');
+                    li.className = `font-mono text-sm p-2 rounded-md flex justify-between items-center`;
+                    li.innerHTML = `<span>${order.gkb_order_no}</span><span class="text-xs bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">${order.store_code}</span>`;
+                    
+                    if (order.status === 'Packed') {
+                        li.classList.add('packed-item');
+                        UI.packedItems.prepend(li);
+                    } else {
+                        li.classList.add('bg-slate-50', 'shadow-sm');
+                        UI.pendingItems.appendChild(li);
+                    }
+                });
+
+                const totalCount = activeBox.orders.length;
+                const percentage = totalCount > 0 ? (packedCount / totalCount) * 100 : 0;
+                UI.progressText.textContent = `${packedCount} / ${totalCount}`;
+                UI.progressBar.style.width = `${percentage}%`;
+            };
+
+            const getCourierPriority = (courierName) => {
+                const name = (courierName || '').toLowerCase();
+                if (name.includes('delivery boy')) return 1;
+                if (name.includes('dtdc') || name.includes('bluedart')) return 2;
+                return 3;
+            };
+
+            const getPriorityClass = (courierName, forBadge = false) => {
+                const priority = getCourierPriority(courierName);
+                if (forBadge) {
+                    if (priority === 1) return 'bg-yellow-400 text-yellow-900';
+                    if (priority === 2) return 'bg-orange-400 text-orange-900';
+                    return 'bg-slate-300 text-slate-700';
+                }
+                if (priority === 1) return 'priority-delivery-boy';
+                if (priority === 2) return 'priority-urgent';
+                return 'priority-normal';
+            };
+
+            const addLogEntry = (message, type = 'info') => {
+                UI.activityPlaceholder.classList.add('hidden');
+                const div = document.createElement('div');
+                const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                let icon;
+                switch(type) {
+                    case 'success': icon = `<svg class="h-5 w-5 text-emerald-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>`; break;
+                    case 'error': icon = `<svg class="h-5 w-5 text-rose-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg>`; break;
+                    default: icon = `<svg class="h-5 w-5 text-slate-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" /></svg>`;
+                }
+                div.className = 'flex items-start space-x-3 text-sm';
+                div.innerHTML = `<div class="flex-shrink-0">${icon}</div><div class="flex-grow"><p class="text-slate-700">${message}</p><p class="text-xs text-slate-400">${time}</p></div>`;
+                UI.activityLog.prepend(div);
+            };
+
+            const showExceptionModal = (order, originalBoxId) => {
+                exceptionContext = { order, originalBoxId, targetBox: activeBox };
+                UI.exceptionMessage.innerHTML = `Order <strong class="font-mono">${order.gkb_order_no}</strong> belongs to Box <strong class="font-mono">${originalBoxId}</strong>. <br><br>Do you want to move it to the active box <strong class="font-mono">${activeBox.box_id}</strong>?`;
+                UI.exceptionModal.classList.add('active');
+            };
+
+            // --- CORE LOGIC ---
+            const fetchDispatchQueue = async () => {
+                const today = new Date().toISOString().split('T')[0];
+                // **FIX**: This query is self-contained and does not need a separate SQL VIEW.
+                const { data, error } = await db.from('boxes')
+                    .select(`
+                        box_id,
+                        dispatch_date,
+                        status,
+                        delivery_groups (
+                            stores (
+                                store_name,
+                                city,
+                                couriers (name)
+                            )
+                        )
+                    `)
+                    .eq('dispatch_date', today)
+                    .in('status', ['Pending', 'Packing']);
+
+                if (error) {
+                    showToast(`Error fetching queue: ${error.message}`, true);
+                    return;
+                }
+                
+                // Process data to flatten it for easier use
+                const processedData = data.map(box => {
+                    const store = box.delivery_groups.stores[0];
+                    return {
+                        box_id: box.box_id,
+                        dispatch_date: box.dispatch_date,
+                        status: box.status,
+                        store_name: store.store_name,
+                        city: store.city,
+                        courier_name: store.couriers.name
+                    }
+                });
+
+                dispatchQueue = processedData.sort((a, b) => {
+                    const priorityA = getCourierPriority(a.courier_name);
+                    const priorityB = getCourierPriority(b.courier_name);
+                    if (priorityA !== priorityB) return priorityA - priorityB;
+                    return a.box_id.localeCompare(b.box_id);
+                });
+                renderQueue();
+            };
+
+            const activateBox = async (boxId) => {
+                const { data, error } = await db.from('boxes').select('*, orders(*)').eq('box_id', boxId).limit(1).single();
+                if (error || !data) { showToast(`Error: Box ID "${boxId}" not found.`, true); return; }
+                if (data.status === 'Packed') { showToast(`Box "${boxId}" is already packed.`, true); fetchDispatchQueue(); return; }
+                
+                const queueData = dispatchQueue.find(b => b.box_id === boxId);
+                activeBox = { ...data, ...queueData };
+
+                addLogEntry(`Box <strong class="font-mono">${boxId}</strong> activated by ${currentUser}.`);
+                renderActiveBox();
+                renderQueue();
+            };
+
+            const packItem = async (orderNo) => {
+                if (!activeBox) {
+                    showToast('Error: No active box. Scan a box ID first.', true); return;
+                }
+
+                const order = activeBox.orders.find(o => o.gkb_order_no === orderNo);
+                if (!order) {
+                    const { data: otherOrder } = await db.from('orders').select('*').eq('gkb_order_no', orderNo).single();
+                    if (otherOrder && otherOrder.status !== 'Packed') {
+                        showExceptionModal(otherOrder, otherOrder.box_id);
+                    } else {
+                        addLogEntry(`Scan failed: Order <strong class="font-mono">${orderNo}</strong> does not belong in this box.`, 'error');
+                        showToast(`Error: Order "${orderNo}" does not belong in this box.`, true);
+                    }
+                    return;
+                }
+
+                if (order.status === 'Packed') { showToast(`Warning: Order "${orderNo}" is already packed.`, false); return; }
+
+                order.status = 'Packed';
+                renderActiveBox();
+                addLogEntry(`Order <strong class="font-mono">${orderNo}</strong> packed into <strong class="font-mono">${activeBox.box_id}</strong>.`);
+                
+                const { error } = await db.from('orders').update({ status: 'Packed', updated_by: currentUser }).eq('gkb_order_no', orderNo);
+                if (error) { /* ... error handling ... */ }
+
+                const packedCount = activeBox.orders.filter(o => o.status === 'Packed').length;
+                if (packedCount === activeBox.orders.length) {
+                    await completeBox();
+                }
+            };
+
+            const completeBox = async () => {
+                const completedBoxId = activeBox.box_id;
+                addLogEntry(`Box <strong class="font-mono">${completedBoxId}</strong> completed by ${currentUser}.`, 'success');
+                showToast(`Box ${completedBoxId} complete!`, false, 5000);
+                
+                await db.from('boxes').update({ status: 'Packed', packed_at: new Date().toISOString(), updated_by: currentUser }).eq('box_id', completedBoxId);
+                
+                activeBox = null;
+                dispatchQueue = dispatchQueue.filter(b => b.box_id !== completedBoxId);
+                renderActiveBox();
+                renderQueue();
+            };
+
+            const handleExceptionConfirm = async () => {
+                const { order, targetBox } = exceptionContext;
+                addLogEntry(`Moving <strong class="font-mono">${order.gkb_order_no}</strong> to <strong class="font-mono">${targetBox.box_id}</strong>.`, 'info');
+                
+                const { error } = await db.from('orders').update({ box_id: targetBox.box_id, updated_by: currentUser }).eq('gkb_order_no', order.gkb_order_no);
+                if (error) { showToast('DB Error: Could not move order.', true); return; }
+                
+                await activateBox(targetBox.box_id);
+                await packItem(order.gkb_order_no);
+                
+                UI.exceptionModal.classList.remove('active');
+                exceptionContext = null;
+            };
+
+            const handleScan = async (scannedValue) => {
+                const value = scannedValue.trim();
+                if (!value) return;
+                UI.scannerInput.value = '';
+                UI.scannerInput.focus();
+
+                const isBoxInQueue = dispatchQueue.some(b => b.box_id === value);
+                if (isBoxInQueue) {
+                    await activateBox(value);
+                } else {
+                    await packItem(value);
+                }
+            };
+
+            const setupUser = () => {
+                UI.userDisplay.textContent = currentUser;
+                UI.changeUserBtn.addEventListener('click', () => {
+                    const newUser = prompt('Enter packer name:', currentUser);
+                    if (newUser && newUser.trim()) {
+                        currentUser = newUser.trim();
+                        localStorage.setItem('packingUser', currentUser);
+                        UI.userDisplay.textContent = currentUser;
+                        addLogEntry(`User changed to <strong class="font-semibold">${currentUser}</strong>.`);
+                    }
+                });
+            };
+
+            // --- EVENT LISTENERS ---
+            UI.scannerInput.addEventListener('change', (e) => handleScan(e.target.value));
+            UI.exceptionConfirmBtn.addEventListener('click', handleExceptionConfirm);
+            UI.exceptionCancelBtn.addEventListener('click', () => UI.exceptionModal.classList.remove('active'));
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    if (exceptionContext) {
+                        UI.exceptionModal.classList.remove('active');
+                        exceptionContext = null;
+                    } else if (activeBox) {
+                        activeBox = null;
+                        renderActiveBox();
+                        renderQueue();
+                        addLogEntry('Active box cleared.');
+                    }
+                }
+            });
+
+            // --- INITIALIZATION ---
+            setupUser();
+            fetchDispatchQueue();
+            UI.scannerInput.focus();
+        });
+    </script>
+</body>
+</html>
