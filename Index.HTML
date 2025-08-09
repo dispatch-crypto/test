@@ -75,10 +75,14 @@
     </div>
 
     <script type="module">
-        const SUPABASE_URL = '%SUPABASE_URL%';
-        const SUPABASE_ANON_KEY = '%SUPABASE_ANON_KEY%';
-        const { createClient } = supabase;
-        const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+<!-- In the <head> of every HTML file -->
+
+<!-- Supabase Client -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<!-- ADD THIS LINE -->
+<script src="config.js"></script>
+
 
         const UI = {
             statTotalOrders: document.getElementById('stat-total-orders'),
@@ -183,5 +187,6 @@
     </script>
 </body>
 </html>
+
 
 
