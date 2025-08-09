@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Dispatch System - Daily Dispatch</title>
+    
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Helper Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <!-- Label Generation Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator/qrcode.js"></script>
+
+    <!-- Custom Styles -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .step { display: none; }
+        .step.active { display: block; animation: fadeIn 0.5s ease-in-out; }
+        .step-indicator {
+            transition: all 0.3s ease;
+            border-color: #d1d5db;
+            color: #6b7280;
+        }
+        .step-indicator.active {
+            border-color: #3b82f6;
+            color: #3b82f6;
+            font-weight: 600;
+        }
+        .step-indicator.completed {
+            border-color: #16a34a;
+            color: #16a34a;
+            background-color: #f0fdf4;
+        }
+        .file-label {
+            border: 2px dashed #cbd5e1;
+            padding: 1.5rem;
+            text-align: center;
+            cursor: pointer;
+            transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out;
+        }
+        .file-label:hover, .file-label.dragging-over {
+            background-color: #e0f2fe;
+            border-color: #3b82f6;
+        }
+        .file-label.has-file {
+            border-color: #22c55e;
+            background-color: #f0fdf4;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="antialiased text-gray-800">
+
+    <!-- App Container -->
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+        
+        <!-- Header -->
+        <header class="bg-white shadow-md rounded-t-lg p-6 border-b">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <svg class="h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.875c0-1.036.84-1.875 1.875-1.875h13.5c1.036 0 1.875.84 1.875 1.875v14.25c0 1.036-.84 1.875-1.875-1.875H5.625c-1.036 0-1.875-.84-1.875-1.875V4.875z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 18.75h9M7.5 12h9m-9-6.25h9" />
+                    </svg>
+                    <h1 class="text-2xl font-bold text-gray-800">Smart Dispatch System</h1>
+                </div>
+                <div id="auth-status" class="text-sm font-medium text-gray-500">Connecting...</div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="bg-white shadow-md rounded-b-lg p-8">
+            <!-- Step Indicators -->
+            <div class="flex justify-between items-center mb-8">
+                <div id="step-indicator-1" class="step-indicator active flex-1 text-center border-b-4 pb-2">Step 1: Upload Files</div>
+                <div id="step-indicator-2" class="step-indicator flex-1 text-center border-b-4 pb-2">Step 2: Review & Create</div>
+                <div id="step-indicator-3" class="step-indicator flex-1 text-center border-b-4 pb-2">Step 3: Print & Pack</div>
+            </div>
+
+            <!-- Step 1: Upload -->
+            <div id="step-1" class="step active">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <!-- Mandatory Upload -->
+                    <div class="bg-gray-50 p-6 rounded-lg border">
+                        <h2 class="text-xl font-semibold mb-2">Upload Lab Dispatch File</h2>
+                        <p class="text-gray-600 mb-4 text-sm">This file is required for daily operations.</p>
+                        <label for="lab-dispatch-upload" class="file-label rounded-lg" id="lab-dispatch-label">
+                            <span class="font-medium text-gray-600" id="lab-dispatch-text">Click or drag `lab_dispatch.csv` here</span>
+                        </label>
+                        <input type="file" id="lab-dispatch-upload" class="hidden" accept=".csv" disabled>
+                    </div>
+                    <!-- Optional Upload -->
+                    <div class="bg-gray-50 p-6 rounded-lg border">
+                        <h2 class="text-xl font-semibold mb-2">Update Stores (Optional)</h2>
+                        <p class="text-gray-600 mb-4 text-sm">Only upload if you need to add or update store details.</p>
+                        <label for="stores-upload" class="file-label rounded-lg" id="stores-label">
+                            <span class="font-medium text-gray-600" id="stores-text">Click or drag `stores.csv` here</span>
+                        </label>
+                        <input type="file" id="stores-upload" class="hidden" accept=".csv" disabled>
+                    </div>
+                </div>
+                <div class="text-center mt-8">
+                    <button id="process-files-btn" class="bg-blue-600 text-white font-bold py-3 px-10 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition-colors" disabled>
+                        Next: Review Dispatch Plan
+                    </button>
+                </div>
+            </div>
+
+            <!-- Step 2: Review -->
+            <div id="step-2" class="step">
+                <div class="text-center">
+                    <h2 class="text-2xl font-semibold mb-2">Review Dispatch Plan</h2>
+                    <p class="text-gray-600 mb-6">Please review the summary below before creating the boxes in the database.</p>
+                </div>
+                <div class="bg-blue-50 p-6 rounded-lg border border-blue-200 grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
+                    <div><p class="text-3xl font-bold text-blue-600" id="summary-orders">0</p><p class="text-sm font-medium text-gray-500">Valid Orders</p></div>
+                    <div><p class="text-3xl font-bold text-blue-600" id="summary-total-boxes">0</p><p class="text-sm font-medium text-gray-500">Total Boxes</p></div>
+                    <div><p class="text-3xl font-bold text-green-600" id="summary-new-boxes">0</p><p class="text-sm font-medium text-gray-500">New Boxes Created</p></div>
+                    <div><p class="text-3xl font-bold text-yellow-600" id="summary-updated-boxes">0</p><p class="text-sm font-medium text-gray-500">Existing Boxes Updated</p></div>
+                    <div><p class="text-3xl font-bold text-red-600" id="summary-errors">0</p><p class="text-sm font-medium text-gray-500">Errors</p></div>
+                </div>
+                <div id="error-details-container" class="mt-6 hidden"><h3 class="font-bold text-lg mb-2 text-red-700">Error Details</h3><div id="error-details" class="bg-red-50 p-4 rounded-lg max-h-40 overflow-y-auto text-sm font-mono"></div></div>
+                <div id="plan-preview-container" class="mt-6 hidden"><h3 class="font-bold text-lg mb-2 text-gray-700">Plan Preview</h3><div id="plan-preview" class="bg-gray-50 p-4 rounded-lg max-h-60 overflow-y-auto text-sm"></div></div>
+                <div class="text-center mt-8 space-x-4"><button id="back-to-upload-btn" class="text-gray-600 font-semibold py-3 px-8 rounded-lg hover:bg-gray-100">Go Back</button><button id="confirm-create-btn" class="bg-green-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-green-700">Confirm & Create Boxes</button></div>
+            </div>
+            
+            <!-- Step 3: Print & Pack -->
+            <div id="step-3" class="step">
+                <div class="text-center">
+                    <h2 class="text-2xl font-semibold mb-2 text-green-700">Success! Dispatch Plan Created.</h2>
+                    <p class="text-gray-600 mb-6">Today's boxes are now in the system. You can print labels and proceed to the Packing Station.</p>
+                    <div class="space-x-4">
+                        <button id="print-labels-btn" class="bg-blue-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-700">Print Today's Labels</button>
+                        <a href="./packing_station.html" id="packing-station-link" class="bg-gray-800 text-white font-bold py-3 px-8 rounded-lg hover:bg-gray-900 transition-colors inline-block" target="_blank">Open Packing Station</a>
+                    </div>
+                </div>
+                <div class="mt-8">
+                    <h3 class="font-bold text-lg mb-2">Today's Dispatch Summary</h3>
+                    <div id="final-summary-container" class="bg-gray-50 p-4 rounded-lg max-h-80 overflow-y-auto text-sm"></div>
+                </div>
+                <div class="text-center mt-8"><button id="start-new-day-btn" class="text-blue-600 font-semibold py-3 px-8 hover:underline">Start New Day / Upload Another File</button></div>
+            </div>
+        </main>
+    </div>
+    
+    <!-- Loading Spinner Overlay -->
+    <div id="loading-overlay" class="fixed inset-0 bg-white bg-opacity-75 z-50 flex items-center justify-center hidden">
+        <div class="flex flex-col items-center">
+            <svg class="animate-spin h-10 w-10 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            <p id="loading-text" class="mt-2 text-lg font-medium text-gray-700">Processing...</p>
+        </div>
+    </div>
+
+    <!-- Error Modal -->
+    <div id="error-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md text-center">
+            <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                <svg class="h-6 w-6 text-red-600" stroke="currentColor" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+            </div>
+            <h3 class="text-lg leading-6 font-medium text-gray-900 mt-4" id="error-modal-title">Error</h3>
+            <div class="mt-2 px-7 py-3">
+                <p class="text-sm text-gray-500" id="error-modal-message">An unexpected error occurred.</p>
+            </div>
+            <div class="mt-4">
+                <button id="error-modal-close-btn" type="button" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirm-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+            <h3 class="text-lg leading-6 font-medium text-gray-900" id="confirm-modal-title">Confirm Action</h3>
+            <div class="mt-2">
+                <p class="text-sm text-gray-500" id="confirm-modal-message">Are you sure?</p>
+            </div>
+            <div class="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
+                <button id="confirm-modal-yes-btn" type="button" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700">
+                    Confirm
+                </button>
+                <button id="confirm-modal-no-btn" type="button" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- CONFIGURATION ---
+            const SUPABASE_URL = 'https://jyzbdkuizwvqamsxqdfg.supabase.co';
+            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp5emJka3Vpend2cWFtc3hxZGZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ0MTE2MzUsImV4cCI6MjA2OTk4NzYzNX0.AqcKHtGPjm5fSijgjh8CMzrqRuheDRAefyU0prPwY2I';
+            const { createClient } = supabase;
+            const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+            // --- STATE MANAGEMENT ---
+            let storeMaster = new Map();
+            let dispatchData = [];
+            let newStoresData = [];
+            let processedData = { orders: [], boxes: [], errors: [], newBoxCount: 0, updatedBoxCount: 0 };
+            let confirmCallback = null;
+
+            // --- UI ELEMENTS ---
+            const UIElements = {
+                steps: document.querySelectorAll('.step'),
+                stepIndicators: document.querySelectorAll('.step-indicator'),
+                labDispatchUpload: document.getElementById('lab-dispatch-upload'),
+                labDispatchLabel: document.getElementById('lab-dispatch-label'),
+                labDispatchText: document.getElementById('lab-dispatch-text'),
+                storesUpload: document.getElementById('stores-upload'),
+                storesLabel: document.getElementById('stores-label'),
+                storesText: document.getElementById('stores-text'),
+                processFilesBtn: document.getElementById('process-files-btn'),
+                confirmCreateBtn: document.getElementById('confirm-create-btn'),
+                backToUploadBtn: document.getElementById('back-to-upload-btn'),
+                startNewDayBtn: document.getElementById('start-new-day-btn'),
+                printLabelsBtn: document.getElementById('print-labels-btn'),
+                loadingOverlay: document.getElementById('loading-overlay'),
+                loadingText: document.getElementById('loading-text'),
+                // Modals
+                errorModal: {
+                    el: document.getElementById('error-modal'),
+                    title: document.getElementById('error-modal-title'),
+                    message: document.getElementById('error-modal-message'),
+                    closeBtn: document.getElementById('error-modal-close-btn'),
+                },
+                confirmModal: {
+                    el: document.getElementById('confirm-modal'),
+                    title: document.getElementById('confirm-modal-title'),
+                    message: document.getElementById('confirm-modal-message'),
+                    yesBtn: document.getElementById('confirm-modal-yes-btn'),
+                    noBtn: document.getElementById('confirm-modal-no-btn'),
+                }
+            };
+
+            // --- UI & MODAL LOGIC ---
+            const navigateToStep = (stepNumber) => {
+                UIElements.steps.forEach(step => step.classList.remove('active'));
+                document.getElementById(`step-${stepNumber}`).classList.add('active');
+                UIElements.stepIndicators.forEach((indicator, index) => {
+                    indicator.classList.remove('active', 'completed');
+                    if (index + 1 < stepNumber) indicator.classList.add('completed');
+                    else if (index + 1 === stepNumber) indicator.classList.add('active');
+                });
+            };
+
+            const showLoading = (show, text = 'Processing...') => {
+                UIElements.loadingText.textContent = text;
+                UIElements.loadingOverlay.classList.toggle('hidden', !show);
+            };
+
+            const showError = (title, message) => {
+                UIElements.errorModal.title.textContent = title;
+                UIElements.errorModal.message.textContent = message;
+                UIElements.errorModal.el.classList.remove('hidden');
+            };
+
+            const showConfirm = (title, message, callback) => {
+                confirmCallback = callback;
+                UIElements.confirmModal.title.textContent = title;
+                UIElements.confirmModal.message.textContent = message;
+                UIElements.confirmModal.el.classList.remove('hidden');
+            };
+
+            // --- CORE LOGIC ---
+            const fetchStoreMaster = async () => {
+                showLoading(true, 'Loading Store Data...');
+                const { data, error } = await db.from('stores').select('*, couriers(id, name)');
+                if (error) {
+                    showLoading(false);
+                    showError('Fatal Error', `Could not load store master data: ${error.message}. Please check your connection and refresh.`);
+                    return;
+                }
+                storeMaster = new Map(data.map(store => [store.store_code, store]));
+                UIElements.labDispatchUpload.disabled = false;
+                UIElements.storesUpload.disabled = false;
+                showLoading(false);
+            };
+
+            const handleFileSelect = (event, type) => {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const label = type === 'lab' ? UIElements.labDispatchLabel : UIElements.storesLabel;
+                const textEl = type === 'lab' ? UIElements.labDispatchText : UIElements.storesText;
+                
+                Papa.parse(file, {
+                    header: true, skipEmptyLines: true, bom: true,
+                    error: (err) => {
+                        showError('File Parsing Error', `Could not parse ${file.name}. Please ensure it is a valid CSV file. Details: ${err.message}`);
+                        resetFileInput(type);
+                    },
+                    complete: (results) => {
+                        label.classList.add('has-file');
+                        textEl.textContent = file.name;
+                        if (type === 'lab') dispatchData = results.data;
+                        else newStoresData = results.data;
+                        UIElements.processFilesBtn.disabled = dispatchData.length === 0;
+                    }
+                });
+            };
+            
+            const processFiles = async () => {
+                showLoading(true, 'Validating files...');
+
+                // 1. Validate CSV headers
+                if (dispatchData.length > 0) {
+                    const requiredCols = ['gkb_order_no', 'customer_ref'];
+                    const missingCols = requiredCols.filter(col => !Object.keys(dispatchData[0]).includes(col));
+                    if (missingCols.length > 0) {
+                        showLoading(false);
+                        showError('Invalid CSV', `The lab_dispatch.csv file is missing required columns: ${missingCols.join(', ')}`);
+                        return;
+                    }
+                }
+
+                // 2. (Optional) Update stores from stores.csv
+                if (newStoresData.length > 0) {
+                    showLoading(true, 'Updating store data...');
+                    try {
+                        const storesToUpsert = newStoresData.map(store => ({
+                            store_code: store.store_code, store_name: store.store_name, address: store.address,
+                            city: store.city, state: store.state, pincode: store.pincode, mobile: store.mobile
+                        }));
+                        const { error } = await db.from('stores').upsert(storesToUpsert, { onConflict: 'store_code' });
+                        if (error) throw error;
+                        await fetchStoreMaster(); // Re-fetch the latest store data
+                    } catch (error) {
+                        showLoading(false);
+                        showError('Database Error', `Failed to update stores: ${error.message}`);
+                        return;
+                    }
+                }
+
+                // 3. Analyze dispatch plan
+                showLoading(true, 'Analyzing dispatch plan...');
+                const { data: existingBoxesData } = await db.from('boxes').select('box_id').eq('dispatch_date', new Date().toISOString().split('T')[0]);
+                const existingBoxIds = new Set((existingBoxesData || []).map(b => b.box_id));
+
+                const orders = [], boxes = new Map(), errors = [], planPreview = [];
+                let newBoxCount = 0, updatedBoxCount = 0;
+                const today = new Date();
+                const dateSuffix = `${String(today.getDate()).padStart(2, '0')}${String(today.getMonth() + 1).padStart(2, '0')}`;
+                
+                const groups = new Map();
+                dispatchData.forEach((row, index) => {
+                    const storeCode = row.customer_ref?.split('/')[0].trim();
+                    if (!storeCode) {
+                        errors.push({ line: index + 2, reason: `Missing store code in 'customer_ref' column.`}); return;
+                    }
+                    const storeInfo = storeMaster.get(storeCode);
+                    if (!storeInfo || !storeInfo.delivery_group_id) {
+                        errors.push({ line: index + 2, reason: `Store "${storeCode}" is not in the database or is missing a delivery group. Please add/update it.`}); return;
+                    }
+                    if (!groups.has(storeInfo.delivery_group_id)) groups.set(storeInfo.delivery_group_id, []);
+                    groups.get(storeInfo.delivery_group_id).push(row);
+                });
+
+                groups.forEach((orderRows, groupId) => {
+                    const uniqueStoreCodes = [...new Set(orderRows.map(r => r.customer_ref.split('/')[0].trim()))];
+                    const firstStoreCode = uniqueStoreCodes[0];
+                    const boxType = uniqueStoreCodes.length > 1 ? 'BULK' : 'BEN';
+                    const boxId = `${boxType}-${dateSuffix}-${firstStoreCode}`;
+
+                    if (!boxes.has(boxId)) {
+                        if (existingBoxIds.has(boxId)) updatedBoxCount++; else newBoxCount++;
+                        const firstStoreInfo = storeMaster.get(firstStoreCode);
+                        boxes.set(boxId, { box_id: boxId, dispatch_date: today.toISOString().split('T')[0], delivery_group_id: firstStoreInfo.delivery_group_id });
+                        planPreview.push({ boxId, boxType, stores: uniqueStoreCodes.join(', ') });
+                    }
+
+                    orderRows.forEach(row => {
+                        orders.push({ gkb_order_no: row.gkb_order_no, customer_ref: row.customer_ref, store_code: row.customer_ref.split('/')[0].trim(), box_id: boxId, order_date: today.toISOString().split('T')[0], status: 'Pending' });
+                    });
+                });
+
+                processedData = { orders, boxes: Array.from(boxes.values()), errors, newBoxCount, updatedBoxCount };
+                
+                // 4. Update review UI
+                document.getElementById('summary-orders').textContent = orders.length;
+                document.getElementById('summary-total-boxes').textContent = boxes.size;
+                document.getElementById('summary-new-boxes').textContent = newBoxCount;
+                document.getElementById('summary-updated-boxes').textContent = updatedBoxCount;
+                document.getElementById('summary-errors').textContent = errors.length;
+                
+                document.getElementById('plan-preview-container').classList.toggle('hidden', planPreview.length === 0);
+                document.getElementById('plan-preview').innerHTML = `<table class="w-full text-left"><thead><tr class="border-b"><th class="p-2">Box ID</th><th class="p-2">Type</th><th class="p-2">Stores</th></tr></thead><tbody>${planPreview.map(p => `<tr><td class="p-2 font-mono">${p.boxId}</td><td class="p-2">${p.boxType}</td><td class="p-2">${p.stores}</td></tr>`).join('')}</tbody></table>`;
+
+                const errorContainer = document.getElementById('error-details-container');
+                if(errors.length > 0) {
+                    errorContainer.classList.remove('hidden');
+                    document.getElementById('error-details').innerHTML = errors.map(e => `<li>Line ${e.line}: ${e.reason}</li>`).join('');
+                } else {
+                    errorContainer.classList.add('hidden');
+                }
+
+                showLoading(false);
+                navigateToStep(2);
+            };
+
+            const createBoxesInDB = async () => {
+                showLoading(true, 'Creating boxes and orders...');
+                const { boxes, orders } = processedData;
+                try {
+                    // **FIX**: Perform operations sequentially to respect foreign key constraints.
+                    
+                    // Step 1: Upsert boxes first and wait for it to complete.
+                    const boxResult = await db.from('boxes').upsert(boxes, { onConflict: 'box_id' }).select();
+                    
+                    // If there was an error with boxes, stop immediately.
+                    if (boxResult.error) {
+                        throw new Error(`Failed to create boxes: ${boxResult.error.message}`);
+                    }
+
+                    // Step 2: Only if boxes were successful, insert the orders.
+                    const orderResult = await db.from('orders').insert(orders).select();
+
+                    // If there was an error with orders, throw it.
+                    if (orderResult.error) {
+                        throw new Error(`Failed to create orders: ${orderResult.error.message}`);
+                    }
+
+                    // Update UI for final summary
+                    const summaryHtml = `<table class="w-full text-left">
+                        <thead><tr class="border-b"><th class="p-2">Box ID</th><th class="p-2">Items</th><th class="p-2">Courier</th><th class="p-2">Address</th></tr></thead>
+                        <tbody>${processedData.boxes.map(box => {
+                            const ordersInBox = processedData.orders.filter(o => o.box_id === box.box_id);
+                            const firstStore = storeMaster.get(ordersInBox[0].store_code);
+                            return `<tr>
+                                <td class="p-2 font-mono">${box.box_id}</td>
+                                <td class="p-2">${ordersInBox.length}</td>
+                                <td class="p-2">${firstStore.couriers?.name || 'N/A'}</td>
+                                <td class="p-2">${firstStore.address}, ${firstStore.city}</td>
+                            </tr>`;
+                        }).join('')}</tbody>
+                    </table>`;
+                    document.getElementById('final-summary-container').innerHTML = summaryHtml;
+
+                    navigateToStep(3);
+                } catch (error) {
+                    showError('Database Error', `Failed to save records: ${error.message}. Please check your data and try again.`);
+                } finally {
+                    showLoading(false);
+                }
+            };
+            
+            const printLabels = () => {
+                showLoading(true, 'Generating Labels PDF...');
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF({ orientation: 'p', unit: 'pt', format: 'a5' }); 
+
+                processedData.boxes.forEach((box, index) => {
+                    const ordersInBox = processedData.orders.filter(o => o.box_id === box.box_id);
+                    const storesInBox = [...new Set(ordersInBox.map(o => o.store_code))];
+                    const firstStore = storeMaster.get(storesInBox[0]);
+                    if (!firstStore) return;
+
+                    if (index > 0) doc.addPage();
+                    
+                    doc.setFontSize(9);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('FROM:', 20, 30);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text('GKB Eyecare Pvt Ltd', 20, 45);
+                    doc.text('B-48, 1st Floor, Sector - 88, Noida, UP - 201306', 20, 60);
+
+                    doc.line(10, 80, 410, 80);
+
+                    doc.setFontSize(10);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('TO:', 20, 100);
+                    doc.setFont('helvetica', 'normal');
+                    const address = `${firstStore.store_name}\n${firstStore.address}, ${firstStore.city}\n${firstStore.state} - ${firstStore.pincode}\nPh: ${firstStore.mobile || 'N/A'}`;
+                    doc.text(doc.splitTextToSize(address, 200), 20, 115);
+                    
+                    const barcodeCanvas = document.createElement('canvas');
+                    JsBarcode(barcodeCanvas, box.box_id, { format: "CODE128", width: 1.5, height: 50, displayValue: true, fontSize: 10, margin: 0 });
+                    doc.addImage(barcodeCanvas.toDataURL(), 'PNG', 240, 95, 160, 60);
+
+                    const qr = qrcode(0, 'M');
+                    const verificationUrl = `https://gkbdispatch.netlify.app/customer_confirmation.html?box=${box.box_id}`; 
+                    qr.addData(verificationUrl);
+                    qr.make();
+                    doc.addImage(qr.createDataURL(5), 'PNG', 260, 165, 120, 120);
+
+                    doc.line(10, 290, 410, 290);
+
+                    let yPos = 305;
+                    if (storesInBox.length > 1) {
+                        doc.setFontSize(8);
+                        doc.setFont('helvetica', 'bold');
+                        doc.text('CONTAINS ORDERS FOR STORES:', 20, yPos);
+                        doc.setFont('helvetica', 'normal');
+                        doc.text(storesInBox.join(', '), 20, yPos + 12, { maxWidth: 380 });
+                        yPos += 30;
+                    }
+
+                    doc.setFontSize(8);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('GKB Order No.', 20, yPos);
+                    doc.text('Customer Ref', 220, yPos);
+                    doc.line(20, yPos + 2, 400, yPos + 2);
+                    yPos += 12;
+                    doc.setFont('helvetica', 'normal');
+                    ordersInBox.forEach(order => {
+                        if (yPos > 570) { doc.addPage(); yPos = 30; }
+                        doc.text(order.gkb_order_no, 20, yPos);
+                        doc.text(order.customer_ref, 220, yPos);
+                        yPos += 10;
+                    });
+                });
+
+                doc.save(`Dispatch_Labels_${new Date().toISOString().split('T')[0]}.pdf`);
+                showLoading(false);
+            };
+
+            const resetFileInput = (type) => {
+                const label = type === 'lab' ? UIElements.labDispatchLabel : UIElements.storesLabel;
+                const textEl = type === 'lab' ? UIElements.labDispatchText : UIElements.storesText;
+                const inputEl = type === 'lab' ? UIElements.labDispatchUpload : UIElements.storesUpload;
+                
+                label.classList.remove('has-file');
+                textEl.textContent = `Click or drag \`${type === 'lab' ? 'lab_dispatch' : 'stores'}.csv\` here`;
+                inputEl.value = '';
+            };
+
+            // --- EVENT LISTENERS ---
+            UIElements.processFilesBtn.addEventListener('click', processFiles);
+            UIElements.backToUploadBtn.addEventListener('click', () => navigateToStep(1));
+            UIElements.confirmCreateBtn.addEventListener('click', () => {
+                showConfirm('Create Dispatch Plan?', `This will create ${processedData.boxes.length} boxes and ${processedData.orders.length} orders in the database. This action cannot be undone.`, createBoxesInDB);
+            });
+            UIElements.printLabelsBtn.addEventListener('click', printLabels);
+            UIElements.startNewDayBtn.addEventListener('click', () => { 
+                dispatchData = []; newStoresData = [];
+                UIElements.processFilesBtn.disabled = true;
+                resetFileInput('lab');
+                resetFileInput('stores');
+                navigateToStep(1);
+            });
+
+            // File Upload Listeners (including drag & drop)
+            ['lab', 'stores'].forEach(type => {
+                const label = type === 'lab' ? UIElements.labDispatchLabel : UIElements.storesLabel;
+                const input = type === 'lab' ? UIElements.labDispatchUpload : UIElements.storesUpload;
+                
+                input.addEventListener('change', (e) => handleFileSelect(e, type));
+                
+                ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                    label.addEventListener(eventName, (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (eventName === 'dragenter' || eventName === 'dragover') {
+                            label.classList.add('dragging-over');
+                        } else {
+                            label.classList.remove('dragging-over');
+                        }
+                        if (eventName === 'drop') {
+                            input.files = e.dataTransfer.files;
+                            input.dispatchEvent(new Event('change'));
+                        }
+                    });
+                });
+            });
+
+            // Modal Listeners
+            UIElements.errorModal.closeBtn.addEventListener('click', () => UIElements.errorModal.el.classList.add('hidden'));
+            UIElements.confirmModal.noBtn.addEventListener('click', () => {
+                UIElements.confirmModal.el.classList.add('hidden');
+                confirmCallback = null;
+            });
+            UIElements.confirmModal.yesBtn.addEventListener('click', () => {
+                UIElements.confirmModal.el.classList.add('hidden');
+                if (confirmCallback) confirmCallback();
+                confirmCallback = null;
+            });
+            
+            // --- INITIALIZATION ---
+            fetchStoreMaster();
+            navigateToStep(1);
+        });
+    </script>
+</body>
+</html>
