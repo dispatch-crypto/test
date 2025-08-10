@@ -685,7 +685,7 @@
                 doc.addImage(barcodeCanvas.toDataURL(), 'PNG', 240, 95, 160, 60);
 
                 const qr = qrcode(0, 'M');
-                qr.addData(`https://gkbtest.netlify.app/customer_confirmation.html?box=${box.box_id}`);
+                qr.addData(`https://gkb-eyecare-dispatch.netlify.app/customer_confirmation.html?box=${box.box_id}`);
                 qr.make();
                 doc.addImage(qr.createDataURL(5), 'PNG', 260, 165, 120, 120);
 
@@ -794,3 +794,4 @@
 </script>
 </body>
 </html>
+
