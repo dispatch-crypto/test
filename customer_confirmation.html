@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Confirm Delivery</title>
+
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Supabase Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f1f5f9; /* slate-100 */
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinner { animation: spin 1s linear infinite; }
+        .content-fade-in { animation: fadeIn 0.5s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="antialiased text-slate-800">
+
+    <!-- App Container -->
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-2xl min-h-screen flex flex-col justify-center">
+
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <div class="flex items-center justify-center space-x-4">
+                <div class="bg-indigo-600 p-3 rounded-xl shadow-lg">
+                     <svg class="h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.125-.504 1.125-1.125V14.25m-17.25 4.5v-1.875a3.375 3.375 0 003.375-3.375h1.5a1.125 1.125 0 011.125 1.125v-1.5a3.375 3.375 0 00-3.375-3.375H3.375" />
+                     </svg>
+                </div>
+                <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Delivery Confirmation</h1>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main id="main-content" class="bg-white p-8 rounded-2xl shadow-lg border border-slate-200">
+            
+            <!-- Loading State -->
+            <div id="loading-state" class="text-center py-16">
+                <div class="h-12 w-12 border-4 border-indigo-500 border-t-transparent rounded-full spinner mx-auto"></div>
+                <p class="mt-4 font-semibold text-slate-600">Loading shipment details...</p>
+            </div>
+
+            <!-- Error State -->
+            <div id="error-state" class="hidden text-center py-16">
+                 <svg class="mx-auto h-12 w-12 text-rose-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z" /></svg>
+                <p id="error-message" class="mt-4 font-semibold text-slate-600">Could not find shipment details.</p>
+                <p class="text-sm text-slate-400 mt-1">Please check the QR code and try again.</p>
+            </div>
+
+            <!-- Success State -->
+            <div id="success-state" class="hidden text-center py-16">
+                <svg class="mx-auto h-12 w-12 text-emerald-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <p id="success-message" class="mt-4 text-xl font-semibold text-slate-800">Thank you!</p>
+                <p class="text-slate-500 mt-1">Your response has been recorded.</p>
+            </div>
+
+            <!-- Confirmation View -->
+            <div id="confirmation-view" class="hidden content-fade-in">
+                <div class="mb-6 pb-6 border-b border-slate-200">
+                    <p class="text-sm text-slate-500">Box ID</p>
+                    <h2 id="box-id-display" class="text-2xl font-bold text-indigo-700 font-mono"></h2>
+                    <p class="text-sm text-slate-500 mt-4">Delivered To</p>
+                    <p id="store-details-display" class="font-semibold text-slate-700"></p>
+                </div>
+
+                <div>
+                    <p class="font-bold text-slate-800 mb-2">Please verify the contents of this box:</p>
+                    <ul id="order-list" class="space-y-2 max-h-60 overflow-y-auto pr-2 bg-slate-50 p-3 rounded-lg">
+                        <!-- Order items will be injected here -->
+                    </ul>
+                </div>
+
+                <div class="mt-8">
+                    <label for="notes-input" class="block text-sm font-medium text-slate-700">Notes (Optional)</label>
+                    <textarea id="notes-input" rows="3" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="e.g., Box was damaged, one item missing..."></textarea>
+                </div>
+
+                <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <button id="report-issue-btn" class="w-full bg-rose-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-rose-700 transition-colors">Report Issue</button>
+                    <button id="confirm-btn" class="w-full bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-emerald-700 transition-colors">Confirm Receipt</button>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script type="module">
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- CONFIGURATION ---
+            const SUPABASE_URL = 'https://jyzbdkuizwvqamsxqdfg.supabase.co';
+            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp5emJka3Vpend2cWFtc3hxZGZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ0MTE2MzUsImV4cCI6MjA2OTk4NzYzNX0.AqcKHtGPjm5fSijgjh8CMzrqRuheDRAefyU0prPwY2I';
+            const { createClient } = supabase;
+            const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+            // --- UI ELEMENTS ---
+            const UI = {
+                loadingState: document.getElementById('loading-state'),
+                errorState: document.getElementById('error-state'),
+                errorMessage: document.getElementById('error-message'),
+                successState: document.getElementById('success-state'),
+                successMessage: document.getElementById('success-message'),
+                confirmationView: document.getElementById('confirmation-view'),
+                boxIdDisplay: document.getElementById('box-id-display'),
+                storeDetailsDisplay: document.getElementById('store-details-display'),
+                orderList: document.getElementById('order-list'),
+                notesInput: document.getElementById('notes-input'),
+                confirmBtn: document.getElementById('confirm-btn'),
+                reportIssueBtn: document.getElementById('report-issue-btn'),
+            };
+
+            // --- CORE LOGIC ---
+            const getBoxIdFromUrl = () => {
+                const params = new URLSearchParams(window.location.search);
+                return params.get('box');
+            };
+
+            const showState = (state) => {
+                ['loadingState', 'errorState', 'successState', 'confirmationView'].forEach(s => UI[s].classList.add('hidden'));
+                if (UI[state]) {
+                    UI[state].classList.remove('hidden');
+                }
+            };
+
+            const submitConfirmation = async (status) => {
+                const boxId = getBoxIdFromUrl();
+                const notes = UI.notesInput.value.trim();
+                const name = status === 'Issue Reported' ? '' : prompt('Please enter your name to confirm receipt:');
+
+                if (status === 'Received' && !name) {
+                    alert('Name is required to confirm receipt.');
+                    return;
+                }
+
+                showState('loadingState');
+
+                // Check if a shipment exists for this box to get shipment_id
+                const { data: shipmentItem, error: itemError } = await db.from('shipment_items')
+                    .select('shipment_id')
+                    .eq('box_id', boxId)
+                    .limit(1)
+                    .single();
+
+                if (itemError || !shipmentItem) {
+                    showState('errorState');
+                    UI.errorMessage.textContent = 'This box is not part of a valid shipment yet.';
+                    return;
+                }
+                
+                const { error } = await db.from('delivery_confirmations').insert({
+                    shipment_id: shipmentItem.shipment_id,
+                    confirmed_by_name: name,
+                    status: status,
+                    notes: notes,
+                });
+
+                if (error) {
+                    showState('errorState');
+                    UI.errorMessage.textContent = `There was an error submitting your confirmation: ${error.message}`;
+                } else {
+                    showState('successState');
+                    UI.successMessage.textContent = status === 'Received' 
+                        ? 'Thank you for confirming!' 
+                        : 'Your issue has been reported. Our team will look into it.';
+                }
+            };
+
+            const loadBoxDetails = async (boxId) => {
+                const { data, error } = await db.from('boxes')
+                    .select(`
+                        box_id,
+                        orders (gkb_order_no),
+                        delivery_groups (full_address)
+                    `)
+                    .eq('box_id', boxId)
+                    .single();
+
+                if (error || !data) {
+                    showState('errorState');
+                    return;
+                }
+
+                UI.boxIdDisplay.textContent = data.box_id;
+                UI.storeDetailsDisplay.textContent = data.delivery_groups.full_address;
+                UI.orderList.innerHTML = data.orders.map(order => 
+                    `<li class="bg-white p-2 rounded-md font-mono text-sm">${order.gkb_order_no}</li>`
+                ).join('');
+                
+                showState('confirmationView');
+            };
+
+            // --- INITIALIZATION ---
+            const boxId = getBoxIdFromUrl();
+            if (!boxId) {
+                showState('errorState');
+            } else {
+                loadBoxDetails(boxId);
+            }
+
+            UI.confirmBtn.addEventListener('click', () => submitConfirmation('Received'));
+            UI.reportIssueBtn.addEventListener('click', () => submitConfirmation('Issue Reported'));
+        });
+    </script>
+</body>
+</html>
