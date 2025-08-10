@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Smart Dispatch System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web@2.0.3"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f1f5f9;
+        }
+        [data-theme="dark"] body {
+            background-color: #1e293b;
+        }
+        [data-theme="dark"] .bg-white {
+            background-color: #1f2a3a;
+            color: #f1f5f9;
+        }
+        [data-theme="dark"] .text-slate-800 {
+            color: #f1f5f9;
+        }
+        [data-theme="dark"] .text-slate-900 {
+            color: #e2e8f0;
+        }
+        [data-theme="dark"] .bg-indigo-600 {
+            background-color: #4f46e5;
+        }
+        [data-theme="dark"] .border-slate-300 {
+            border-color: #475569;
+        }
+        [data-theme="dark"] input {
+            background-color: #334155;
+            color: #f1f5f9;
+        }
+        .toast { transition: transform 0.5s ease-in-out, opacity 0.5s ease-in-out; }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast.hide { transform: translateY(100%); opacity: 0; }
+    </style>
+</head>
+<body class="antialiased text-slate-800">
+
+    <div class="min-h-screen flex items-center justify-center bg-slate-100">
+        <div class="w-full max-w-md p-8 space-y-8 bg-white rounded-2xl shadow-lg">
+            
+            <div class="text-center">
+                <div class="flex items-center justify-center space-x-3 mb-4">
+                    <div class="bg-indigo-600 p-3 rounded-lg shadow">
+                         <i class="ph-bold ph-list-dashes text-lg text-white"></i>
+                    </div>
+                    <h1 class="text-2xl font-extrabold tracking-tight text-slate-900">Smart Dispatch System</h1>
+                </div>
+                <h2 class="text-xl font-bold text-slate-800">Sign in to your account</h2>
+                <p class="mt-2 text-sm text-slate-600">Enter your credentials to access the dashboard.</p>
+            </div>
+
+            <form id="login-form" class="mt-8 space-y-6">
+                <div class="space-y-4 rounded-md shadow-sm">
+                    <div>
+                        <label for="email-address" class="sr-only">Email address</label>
+                        <input id="email-address" name="email" type="email" autocomplete="email" required class="relative block w-full appearance-none rounded-lg border border-slate-300 px-3 py-3 text-slate-900 placeholder-slate-500 focus:z-10 focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm" placeholder="Email address">
+                    </div>
+                    <div>
+                        <label for="password" class="sr-only">Password</label>
+                        <input id="password" name="password" type="password" autocomplete="current-password" required class="relative block w-full appearance-none rounded-lg border border-slate-300 px-3 py-3 text-slate-900 placeholder-slate-500 focus:z-10 focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm" placeholder="Password">
+                    </div>
+                </div>
+
+                <div>
+                    <button type="submit" id="login-button" class="group relative flex w-full justify-center rounded-lg border border-transparent bg-indigo-600 py-3 px-4 text-sm font-semibold text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
+                        Sign in
+                    </button>
+                </div>
+            </form>
+            
+            <div id="error-message" class="hidden text-center text-sm font-medium text-red-600 bg-red-50 p-3 rounded-lg">
+                <!-- Error content will be injected here -->
+            </div>
+            <div class="flex items-center space-x-3 p-2 rounded-lg bg-slate-50 justify-between mt-4">
+                <span class="text-xs font-semibold text-slate-600">Dark Mode</span>
+                <button id="theme-toggle" class="relative inline-flex h-6 w-11 items-center rounded-full bg-slate-200 transition-colors">
+                    <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform" id="theme-circle"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
+
+    <script type="module">
+        // --- CONFIGURATION ---
+        const SUPABASE_URL = typeof __supabase_url !== 'undefined' ? __supabase_url : 'https://jyzbdkuizwvqamsxqdfg.supabase.co';
+        const SUPABASE_ANON_KEY = typeof __supabase_anon_key !== 'undefined' ? __supabase_anon_key : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp5emJka3Vpend2cWFtc3hxZGZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ0MTE2MzUsImV4cCI6MjA2OTk4NzYzNX0.AqcKHtGPjm5fSijgjh8CMzrqRuheDRAefyU0prPwY2I';
+        const { createClient } = supabase;
+        const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // --- UI ELEMENTS ---
+        const loginForm = document.getElementById('login-form');
+        const loginButton = document.getElementById('login-button');
+        const errorMessageDiv = document.getElementById('error-message');
+        const themeToggle = document.getElementById('theme-toggle');
+        const themeCircle = document.getElementById('theme-circle');
+        const toastContainer = document.getElementById('toast-container');
+
+        // --- UTILITY FUNCTIONS ---
+        const redirectTo = (page) => {
+            const currentPath = window.location.pathname;
+            const newPath = currentPath.substring(0, currentPath.lastIndexOf('/') + 1) + page;
+            window.location.href = new URL(newPath, window.location.origin).href;
+        };
+
+        const showToast = (message, type = 'info') => {
+            const toast = document.createElement('div');
+            let bgColor = 'bg-slate-800';
+            let icon = `<i class="ph-bold ph-info text-white"></i>`;
+            if (type === 'success') {
+                bgColor = 'bg-emerald-600';
+                icon = `<i class="ph-bold ph-check-circle text-white"></i>`;
+            } else if (type === 'error') {
+                bgColor = 'bg-rose-600';
+                icon = `<i class="ph-bold ph-x-circle text-white"></i>`;
+            }
+
+            toast.className = `toast px-4 py-3 rounded-lg text-white shadow-lg flex items-center space-x-3 transform translate-y-full opacity-0 ${bgColor}`;
+            toast.innerHTML = `${icon} <span class="font-semibold text-sm">${message}</span>`;
+            toastContainer.appendChild(toast);
+
+            setTimeout(() => toast.classList.add('show'), 10);
+            setTimeout(() => {
+                toast.classList.remove('show');
+                toast.classList.add('hide');
+                setTimeout(() => toast.remove(), 500);
+            }, 5000);
+        };
+        
+        const setTheme = (theme) => {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+            if (theme === 'dark') {
+                themeCircle.style.transform = 'translateX(20px)';
+                themeCircle.style.backgroundColor = '#64748b';
+            } else {
+                themeCircle.style.transform = 'translateX(0)';
+                themeCircle.style.backgroundColor = '#fff';
+            }
+        };
+
+        // --- CORE LOGIC ---
+        const checkSession = async () => {
+            const { data: { session } } = await db.auth.getSession();
+            if (session) {
+                redirectTo('index.html');
+            }
+        };
+
+        loginForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            
+            const email = loginForm.email.value;
+            const password = loginForm.password.value;
+
+            loginButton.disabled = true;
+            loginButton.textContent = 'Signing in...';
+            errorMessageDiv.classList.add('hidden');
+
+            const { data, error } = await db.auth.signInWithPassword({
+                email: email,
+                password: password,
+            });
+
+            if (error) {
+                errorMessageDiv.textContent = `Login Failed: ${error.message}`;
+                errorMessageDiv.classList.remove('hidden');
+                loginButton.disabled = false;
+                loginButton.textContent = 'Sign in';
+                showToast('Login failed. Please check your credentials.', 'error');
+            } else {
+                showToast('Login successful! Redirecting...', 'success');
+                setTimeout(() => redirectTo('index.html'), 1000);
+            }
+        });
+
+        // --- EVENT LISTENERS ---
+        themeToggle.addEventListener('click', () => {
+            const currentTheme = localStorage.getItem('theme') || 'light';
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            setTheme(newTheme);
+        });
+
+        // --- INITIALIZATION ---
+        setTheme(localStorage.getItem('theme') || 'light');
+        checkSession();
+    </script>
+</body>
+</html>

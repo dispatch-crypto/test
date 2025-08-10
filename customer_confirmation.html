@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Confirm Delivery</title>
+
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Supabase Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <!-- Phosphor Icons for a clean, modern look -->
+    <script src="https://unpkg.com/@phosphor-icons/web@2.0.3"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f1f5f9;
+        }
+        [data-theme="dark"] body {
+            background-color: #1e293b;
+            color: #f1f5f9;
+        }
+        .modal { display: none; }
+        .modal.active { display: flex; animation: fadeIn 0.3s ease; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinner { animation: spin 1s linear infinite; }
+        .content-fade-in { animation: fadeIn 0.5s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .toast { transition: transform 0.5s ease-in-out, opacity 0.5s ease-in-out; }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast.hide { transform: translateY(100%); opacity: 0; }
+        [data-theme="dark"] .bg-slate-50 { background-color: #475569; }
+        [data-theme="dark"] .bg-white { background-color: #1f2a3a; color: #f1f5f9; }
+        [data-theme="dark"] .text-slate-800 { color: #f1f5f9; }
+        [data-theme="dark"] .text-slate-900 { color: #e2e8f0; }
+    </style>
+</head>
+<body class="antialiased text-slate-800">
+
+    <!-- App Container -->
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-2xl min-h-screen flex flex-col justify-center">
+
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <div class="flex items-center justify-center space-x-4">
+                <div class="bg-indigo-600 p-3 rounded-xl shadow-lg">
+                    <i class="ph-bold ph-truck text-2xl text-white"></i>
+                </div>
+                <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Delivery Confirmation</h1>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main id="main-content" class="bg-white p-8 rounded-2xl shadow-lg border border-slate-200">
+            
+            <!-- Loading State -->
+            <div id="loading-state" class="text-center py-16">
+                <div class="h-12 w-12 border-4 border-indigo-500 border-t-transparent rounded-full spinner mx-auto"></div>
+                <p class="mt-4 font-semibold text-slate-600">Loading shipment details...</p>
+            </div>
+
+            <!-- Error State -->
+            <div id="error-state" class="hidden text-center py-16">
+                <i class="ph-bold ph-warning-circle text-6xl text-rose-500 mx-auto"></i>
+                <p id="error-message" class="mt-4 font-semibold text-slate-600">Could not find shipment details.</p>
+                <p class="text-sm text-slate-400 mt-1">Please check the QR code and try again.</p>
+            </div>
+
+            <!-- Success State -->
+            <div id="success-state" class="hidden text-center py-16">
+                <i class="ph-bold ph-check-circle text-6xl text-emerald-500 mx-auto"></i>
+                <p id="success-message" class="mt-4 text-xl font-semibold text-slate-800">Thank you!</p>
+                <p class="text-slate-500 mt-1">Your response has been recorded.</p>
+            </div>
+
+            <!-- Confirmation View -->
+            <div id="confirmation-view" class="hidden content-fade-in">
+                <div class="mb-6 pb-6 border-b border-slate-200">
+                    <p class="text-sm text-slate-500">Box ID</p>
+                    <h2 id="box-id-display" class="text-2xl font-bold text-indigo-700 font-mono"></h2>
+                    <p class="text-sm text-slate-500 mt-4">Delivered To</p>
+                    <p id="store-details-display" class="font-semibold text-slate-700"></p>
+                </div>
+
+                <div>
+                    <p class="font-bold text-slate-800 mb-2">Please verify the contents of this box:</p>
+                    <ul id="order-list" class="space-y-2 max-h-60 overflow-y-auto pr-2 bg-slate-50 p-3 rounded-lg">
+                        <!-- Order items will be injected here -->
+                    </ul>
+                </div>
+
+                <div class="mt-8">
+                    <label for="notes-input" class="block text-sm font-medium text-slate-700">Notes (Optional)</label>
+                    <textarea id="notes-input" rows="3" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="e.g., Box was damaged, one item missing..."></textarea>
+                </div>
+
+                <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <button id="report-issue-btn" class="w-full flex items-center justify-center space-x-2 bg-rose-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-rose-700 transition-colors">
+                        <i class="ph-bold ph-warning-circle text-lg"></i>
+                        <span>Report Issue</span>
+                    </button>
+                    <button id="confirm-btn" class="w-full flex items-center justify-center space-x-2 bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-emerald-700 transition-colors">
+                        <i class="ph-bold ph-check-circle text-lg"></i>
+                        <span>Confirm Receipt</span>
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
+
+    <script type="module">
+        // --- CONFIGURATION ---
+        const SUPABASE_URL = typeof __supabase_url !== 'undefined' ? __supabase_url : 'https://jyzbdkuizwvqamsxqdfg.supabase.co';
+        const SUPABASE_ANON_KEY = typeof __supabase_anon_key !== 'undefined' ? __supabase_anon_key : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp5emJka3Vpend2cWFtc3hxZGZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ0MTE2MzUsImV4cCI6MjA2OTk4NzYzNX0.AqcKHtGPjm5fSijgjh8CMzrqRuheDRAefyU0prPwY2I';
+        const { createClient } = supabase;
+        const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // --- UI ELEMENTS ---
+        const UI = {
+            loadingState: document.getElementById('loading-state'),
+            errorState: document.getElementById('error-state'),
+            errorMessage: document.getElementById('error-message'),
+            successState: document.getElementById('success-state'),
+            successMessage: document.getElementById('success-message'),
+            confirmationView: document.getElementById('confirmation-view'),
+            boxIdDisplay: document.getElementById('box-id-display'),
+            storeDetailsDisplay: document.getElementById('store-details-display'),
+            orderList: document.getElementById('order-list'),
+            notesInput: document.getElementById('notes-input'),
+            confirmBtn: document.getElementById('confirm-btn'),
+            reportIssueBtn: document.getElementById('report-issue-btn'),
+            toastContainer: document.getElementById('toast-container'),
+        };
+
+        // --- UTILITY FUNCTIONS ---
+        const showToast = (message, type = 'info') => {
+            const toast = document.createElement('div');
+            let bgColor = 'bg-slate-800';
+            let icon = `<i class="ph-bold ph-info text-white"></i>`;
+            if (type === 'success') {
+                bgColor = 'bg-emerald-600';
+                icon = `<i class="ph-bold ph-check-circle text-white"></i>`;
+            } else if (type === 'error') {
+                bgColor = 'bg-rose-600';
+                icon = `<i class="ph-bold ph-x-circle text-white"></i>`;
+            }
+
+            toast.className = `toast px-4 py-3 rounded-lg text-white shadow-lg flex items-center space-x-3 transform translate-y-full opacity-0 ${bgColor}`;
+            toast.innerHTML = `${icon} <span class="font-semibold text-sm">${message}</span>`;
+            UI.toastContainer.appendChild(toast);
+
+            setTimeout(() => toast.classList.add('show'), 10);
+            setTimeout(() => {
+                toast.classList.remove('show');
+                toast.classList.add('hide');
+                setTimeout(() => toast.remove(), 500);
+            }, 5000);
+        };
+
+        const setTheme = (theme) => {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+        };
+        
+        // --- CORE LOGIC ---
+        const getBoxIdFromUrl = () => {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('box');
+        };
+
+        const showState = (state) => {
+            ['loadingState', 'errorState', 'successState', 'confirmationView'].forEach(s => UI[s].classList.add('hidden'));
+            if (UI[state]) {
+                UI[state].classList.remove('hidden');
+            }
+        };
+
+        const submitConfirmation = async (status) => {
+            const boxId = getBoxIdFromUrl();
+            const notes = UI.notesInput.value.trim();
+            let confirmedByName = '';
+
+            if (status === 'Received') {
+                confirmedByName = prompt('Please enter your name to confirm receipt:') || '';
+                if (!confirmedByName) {
+                    showToast('Name is required to confirm receipt.', 'error');
+                    return;
+                }
+            }
+
+            showState('loadingState');
+
+            const { data: shipmentItem, error: itemError } = await db.from('shipment_items')
+                .select('shipment_id')
+                .eq('box_id', boxId)
+                .limit(1)
+                .single();
+
+            if (itemError || !shipmentItem) {
+                showState('errorState');
+                UI.errorMessage.textContent = 'This box is not part of a valid shipment yet.';
+                return;
+            }
+            
+            const { error } = await db.from('delivery_confirmations').insert({
+                shipment_id: shipmentItem.shipment_id,
+                confirmed_by_name: confirmedByName,
+                status: status,
+                notes: notes,
+            });
+
+            if (error) {
+                showState('errorState');
+                UI.errorMessage.textContent = `There was an error submitting your confirmation: ${error.message}`;
+            } else {
+                showState('successState');
+                UI.successMessage.textContent = status === 'Received' 
+                    ? 'Thank you for confirming!' 
+                    : 'Your issue has been reported. Our team will look into it.';
+            }
+        };
+
+        const loadBoxDetails = async (boxId) => {
+            const { data, error } = await db.from('boxes')
+                .select(`
+                    box_id,
+                    orders (gkb_order_no),
+                    delivery_groups (full_address)
+                `)
+                .eq('box_id', boxId)
+                .single();
+
+            if (error || !data) {
+                showState('errorState');
+                return;
+            }
+
+            UI.boxIdDisplay.textContent = data.box_id;
+            UI.storeDetailsDisplay.textContent = data.delivery_groups.full_address;
+            UI.orderList.innerHTML = data.orders.map(order => 
+                `<li class="bg-white p-2 rounded-md font-mono text-sm">${order.gkb_order_no}</li>`
+            ).join('');
+            
+            showState('confirmationView');
+        };
+
+        // --- INITIALIZATION ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const boxId = getBoxIdFromUrl();
+            if (!boxId) {
+                showState('errorState');
+            } else {
+                loadBoxDetails(boxId);
+            }
+
+            UI.confirmBtn.addEventListener('click', () => submitConfirmation('Received'));
+            UI.reportIssueBtn.addEventListener('click', () => submitConfirmation('Issue Reported'));
+
+            // Set initial theme
+            setTheme(localStorage.getItem('theme') || 'light');
+        });
+    </script>
+</body>
+</html>
