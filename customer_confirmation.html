@@ -41,6 +41,17 @@
         [data-theme="dark"] .bg-white { background-color: #1f2a3a; color: #f1f5f9; }
         [data-theme="dark"] .text-slate-800 { color: #f1f5f9; }
         [data-theme="dark"] .text-slate-900 { color: #e2e8f0; }
+        .checkbox-item {
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+        .checkbox-item:hover {
+            background-color: #f8fafc;
+        }
+        .checkbox-item input:checked + span {
+            text-decoration: line-through;
+            color: #94a3b8;
+        }
     </style>
 </head>
 <body class="antialiased text-slate-800">
@@ -91,9 +102,9 @@
                 </div>
 
                 <div>
-                    <p class="font-bold text-slate-800 mb-2">Please verify the contents of this box:</p>
+                    <p class="font-bold text-slate-800 mb-2">Please check off all received orders:</p>
                     <ul id="order-list" class="space-y-2 max-h-60 overflow-y-auto pr-2 bg-slate-50 p-3 rounded-lg">
-                        <!-- Order items will be injected here -->
+                        <!-- Order items will be injected here with checkboxes -->
                     </ul>
                 </div>
 
@@ -143,6 +154,8 @@
             toastContainer: document.getElementById('toast-container'),
         };
 
+        let boxData = {};
+
         // --- UTILITY FUNCTIONS ---
         const showToast = (message, type = 'info') => {
             const toast = document.createElement('div');
@@ -187,9 +200,14 @@
         };
 
         const submitConfirmation = async (status) => {
-            const boxId = getBoxIdFromUrl();
+            const confirmedOrders = Array.from(UI.orderList.querySelectorAll('input:checked')).map(input => input.value);
             const notes = UI.notesInput.value.trim();
             let confirmedByName = '';
+
+            if (status === 'Received' && confirmedOrders.length === 0) {
+                 showToast('Please check at least one order to confirm receipt.', 'error');
+                 return;
+            }
 
             if (status === 'Received') {
                 confirmedByName = prompt('Please enter your name to confirm receipt:') || '';
@@ -198,12 +216,12 @@
                     return;
                 }
             }
-
+            
             showState('loadingState');
 
             const { data: shipmentItem, error: itemError } = await db.from('shipment_items')
                 .select('shipment_id')
-                .eq('box_id', boxId)
+                .eq('box_id', boxData.box_id)
                 .limit(1)
                 .single();
 
@@ -213,16 +231,25 @@
                 return;
             }
             
-            const { error } = await db.from('delivery_confirmations').insert({
-                shipment_id: shipmentItem.shipment_id,
-                confirmed_by_name: confirmedByName,
-                status: status,
-                notes: notes,
+            const allOrders = boxData.orders.map(o => o.gkb_order_no);
+            const confirmationPromises = allOrders.map(orderNo => {
+                const orderStatus = confirmedOrders.includes(orderNo) ? 'Received' : (status === 'Received' ? 'Received' : 'Issue Reported');
+                return db.from('delivery_confirmations').insert({
+                    shipment_id: shipmentItem.shipment_id,
+                    confirmed_by_name: confirmedByName,
+                    status: orderStatus,
+                    notes: notes,
+                    gkb_order_no: orderNo
+                });
             });
 
-            if (error) {
+            const results = await Promise.all(confirmationPromises);
+            const hasError = results.some(r => r.error);
+
+            if (hasError) {
                 showState('errorState');
-                UI.errorMessage.textContent = `There was an error submitting your confirmation: ${error.message}`;
+                UI.errorMessage.textContent = `There was an error submitting your confirmation.`;
+                console.error("Submission errors:", results.filter(r => r.error));
             } else {
                 showState('successState');
                 UI.successMessage.textContent = status === 'Received' 
@@ -235,7 +262,7 @@
             const { data, error } = await db.from('boxes')
                 .select(`
                     box_id,
-                    orders (gkb_order_no),
+                    orders (gkb_order_no, customer_ref),
                     delivery_groups (full_address)
                 `)
                 .eq('box_id', boxId)
@@ -246,10 +273,16 @@
                 return;
             }
 
+            boxData = data;
             UI.boxIdDisplay.textContent = data.box_id;
             UI.storeDetailsDisplay.textContent = data.delivery_groups.full_address;
+
             UI.orderList.innerHTML = data.orders.map(order => 
-                `<li class="bg-white p-2 rounded-md font-mono text-sm">${order.gkb_order_no}</li>`
+                `<li class="checkbox-item flex items-center p-2 rounded-md transition-all space-x-2">
+                    <input type="checkbox" id="${order.gkb_order_no}" value="${order.gkb_order_no}" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
+                    <span class="font-mono text-sm text-slate-700">${order.gkb_order_no}</span>
+                    <span class="text-xs text-slate-500 ml-2">(Ref: ${order.customer_ref})</span>
+                </li>`
             ).join('');
             
             showState('confirmationView');
@@ -267,7 +300,6 @@
             UI.confirmBtn.addEventListener('click', () => submitConfirmation('Received'));
             UI.reportIssueBtn.addEventListener('click', () => submitConfirmation('Issue Reported'));
 
-            // Set initial theme
             setTheme(localStorage.getItem('theme') || 'light');
         });
     </script>
